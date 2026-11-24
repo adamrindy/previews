@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Watanabe Kitchen — Order a Bento</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,400;0,500;0,700;1,800;1,900&display=swap" rel="stylesheet">
+<style>
+  /* ============ EDIT ME: Niki's settings ============ */
+  /* (see CONFIG in the script at the bottom) */
+
+  :root{
+    --brown:#6f5646; --brown-d:#5a4538; --brown-l:#836756;
+    --cream:#f3ebe2; --cream-d:#e6d9cc; --ink:#2b211b;
+    --line:rgba(243,235,226,.28);
+    --r:18px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:"Rubik",system-ui,sans-serif; color:var(--cream);
+    background-color:var(--brown);
+    background-image:
+      radial-gradient(circle at 25% 25%, rgba(0,0,0,.10) 1px, transparent 1.6px),
+      radial-gradient(circle at 75% 75%, rgba(255,255,255,.06) 1px, transparent 1.6px);
+    background-size:6px 6px, 6px 6px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:560px;margin:0 auto;padding:28px 20px 60px}
+
+  /* header */
+  .top{display:flex;justify-content:space-between;align-items:center;font-size:13px;letter-spacing:.02em;opacity:.9}
+  .top a{color:var(--cream)}
+  h1{
+    font-weight:900;font-style:italic;font-size:clamp(52px,15vw,84px);
+    line-height:.86;letter-spacing:-.03em;margin:26px 0 18px;text-transform:lowercase;
+  }
+  .stamps{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 22px}
+  .stamp{
+    border:2px solid var(--cream);border-radius:999px;padding:7px 14px;
+    font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;
+    transform:rotate(-3deg);
+  }
+  .stamp:nth-child(2){transform:rotate(2deg)}
+  .stamp:nth-child(3){transform:rotate(-1deg)}
+  .pitch{list-style:none;padding:0;margin:0 0 8px;font-size:18px;line-height:1.35}
+  .pitch li{display:flex;gap:12px;margin:0 0 12px}
+  .pitch li::before{content:"✶";font-size:20px;line-height:1.1}
+  .away{
+    background:var(--cream);color:var(--ink);border-radius:var(--r);
+    padding:12px 16px;font-size:15px;margin:18px 0 0;display:none;
+  }
+  .away b{font-weight:700}
+
+  /* form */
+  form{margin-top:30px}
+  .step{border-top:1.5px dashed var(--line);padding:22px 0 6px}
+  .step h2{
+    font-style:italic;font-weight:800;font-size:24px;margin:0 0 4px;text-transform:lowercase;letter-spacing:-.01em;
+  }
+  .hint{font-size:14px;opacity:.8;margin:0 0 14px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{position:relative}
+  .chip input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+  .chip span{
+    display:inline-block;border:1.5px solid var(--cream);border-radius:999px;
+    padding:10px 15px;font-size:15px;font-weight:500;user-select:none;cursor:pointer;
+    
+  }
+  .chip input:checked + span{background:var(--cream);color:var(--brown-d)}
+  .chip input:focus-visible + span{outline:3px solid #fff;outline-offset:2px}
+  .chip.day span{min-width:74px;text-align:center;line-height:1.15;padding:9px 12px}
+  .chip.day small{display:block;font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.06em}
+
+  .qty{display:flex;align-items:center;gap:14px}
+  .qty button{
+    width:46px;height:46px;border-radius:50%;border:1.5px solid var(--cream);
+    background:transparent;color:var(--cream);font-size:24px;font-family:inherit;cursor:pointer;
+  }
+  .qty output{font-size:34px;font-weight:800;font-style:italic;min-width:30px;text-align:center}
+  .qty .feeds{font-size:14px;opacity:.85}
+
+  label.f{display:block;font-size:13px;text-transform:uppercase;letter-spacing:.06em;opacity:.85;margin:14px 0 6px}
+  input.t, textarea{
+    width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--cream);
+    border:0;border-radius:12px;padding:13px 14px;
+  }
+  textarea{min-height:78px;resize:vertical}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cond{display:none}
+  .cond.on{display:block}
+
+  /* summary */
+  .ticket{
+    margin-top:28px;background:var(--cream);color:var(--ink);border-radius:var(--r);
+    padding:20px 18px;position:relative;
+  }
+  .ticket::before{ /* tear-off edge like the flyer */
+    content:"";position:absolute;left:14px;right:14px;top:-1px;border-top:2px dashed var(--brown-l);
+  }
+  .ticket h3{margin:0 0 10px;font-style:italic;font-weight:900;font-size:26px;text-transform:lowercase}
+  .ticket pre{
+    white-space:pre-wrap;font-family:inherit;font-size:14.5px;line-height:1.45;margin:0 0 14px;
+    background:#fff8;border-radius:10px;padding:12px;
+  }
+  .total{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:18px;margin:0 0 14px}
+  .total b{font-size:28px;font-style:italic;font-weight:900}
+  .btn{
+    display:block;width:100%;text-align:center;text-decoration:none;cursor:pointer;
+    font:inherit;font-weight:700;font-size:17px;border-radius:999px;padding:15px 18px;margin:8px 0 0;border:0;
+  }
+  .btn.primary{background:var(--brown-d);color:var(--cream)}
+  .btn.ghost{background:transparent;border:2px solid var(--brown-d);color:var(--brown-d)}
+  .btn[aria-disabled="true"]{opacity:.4;pointer-events:none}
+  .missing{font-size:13.5px;color:#8a3b25;margin:6px 0 0;min-height:1em}
+  .small{font-size:13px;opacity:.75;margin:10px 0 0;line-height:1.4}
+
+  .list{
+    margin-top:26px;border:2px solid var(--cream);border-radius:var(--r);padding:18px;
+  }
+  .list h3{margin:0 0 4px;font-style:italic;font-weight:800;font-size:22px;text-transform:lowercase}
+  .list p{margin:0 0 12px;font-size:15px;opacity:.9}
+  .list .btn{background:var(--cream);color:var(--brown-d)}
+
+  footer{margin-top:36px;font-size:13px;opacity:.8;line-height:1.6;text-align:center}
+  footer a{color:var(--cream)}
+  .permit{margin-top:8px;font-weight:700}
+  .toast{
+    position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--cream);
+    padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;
+  }
+  .toast.on{opacity:1}
+  .preview-tag{position:fixed;top:10px;right:10px;z-index:50;background:#ffd166;color:#2b211b;font:700 11px/1 "Rubik",system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;padding:6px 10px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+</style>
+</head>
+<body>
+<div class="preview-tag">Preview</div>
+<div class="wrap">
+
+  <div class="top">
+    <span>watanabe kitchen</span>
+    <a id="igTop" href="#">@watanabe_kitchen</a>
+  </div>
+
+  <h1>home-made japanese bentos</h1>
+
+  <div class="stamps">
+    <span class="stamp">arts district, la</span>
+    <span class="stamp">reusable tins</span>
+    <span class="stamp">delivered by hand</span>
+  </div>
+
+  <ul class="pitch">
+    <li><span id="pitchPrice">$100 for a four-tiered bento filled with enough food for two, on a rotating seasonal menu.</span></li>
+    <li><span>Vegan, vegetarian, allergies — tell Niki and she'll build the box around it.</span></li>
+    <li><span>Pick up at <b id="pickupAddr">1330 Factory Pl</b>, or have it walked to your door.</span></li>
+  </ul>
+
+  <div class="away" id="away"></div>
+
+  <form id="f" novalidate>
+
+    <section class="step">
+      <h2>1 · pick a day</h2>
+      <p class="hint">Niki confirms every order by text, usually same day.</p>
+      <div class="chips" id="days"></div>
+    </section>
+
+    <section class="step">
+      <h2>2 · how many bentos</h2>
+      <div class="qty">
+        <button type="button" id="minus" aria-label="One fewer">−</button>
+        <output id="qty">1</output>
+        <span class="feeds" id="feeds">feeds 2</span>
+        <button type="button" id="plus" aria-label="One more">+</button>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>3 · how it eats</h2>
+      <p class="hint">Pick one, then add anything Niki should know.</p>
+      <div class="chips" id="diet"></div>
+      <label class="f" for="allergy">Allergies or dislikes</label>
+      <input class="t" id="allergy" placeholder="e.g. no shellfish, no mushrooms">
+    </section>
+
+    <section class="step">
+      <h2>4 · get it to you</h2>
+      <div class="chips" id="handoff"></div>
+      <div class="cond" id="whereWrap">
+        <label class="f" for="where">Building &amp; unit</label>
+        <input class="t" id="where" placeholder="e.g. Barker Block, #312">
+      </div>
+      <div id="tinsWrap">
+        <label class="f">Containers</label>
+        <div class="chips" id="tins"></div>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>5 · you</h2>
+      <div class="row">
+        <div>
+          <label class="f" for="name">Name</label>
+          <input class="t" id="name" autocomplete="name">
+        </div>
+        <div>
+          <label class="f" for="phone">Phone</label>
+          <input class="t" id="phone" type="tel" autocomplete="tel" inputmode="tel">
+        </div>
+      </div>
+      <label class="f">Paying with</label>
+      <div class="chips" id="pay"></div>
+      <label class="f" for="notes">Anything else</label>
+      <textarea id="notes" placeholder="Celebrating something? Want it a little earlier?"></textarea>
+    </section>
+
+    <div class="ticket">
+      <h3>your order</h3>
+      <pre id="preview"></pre>
+      <div class="total"><span>Total, paid at handoff</span><b id="total">$100</b></div>
+      <a class="btn primary" id="send" href="#">Text this order to Niki</a>
+      <button type="button" class="btn ghost" id="copy">Copy order</button>
+      <p class="missing" id="missing"></p>
+      <p class="small">Tapping “Text this order” opens your messages with everything filled in — just hit send. If it doesn't open, copy the order and text it to <b id="numText"></b>.</p>
+    </div>
+  </form>
+
+  <div class="list">
+    <h3>get the weekly menu</h3>
+    <p>One text a week with what's in the box and which days are open. Text back anytime to come off the list.</p>
+    <a class="btn" id="join" href="#">Text me the menu</a>
+  </div>
+
+  <footer>
+    * made by hand with love in the arts district, la<br>
+    <a id="igBottom" href="#">@watanabe_kitchen</a> · text <span id="numFoot"></span>
+    <div class="permit" id="permit"></div>
+  </footer>
+</div>
+<div class="toast" id="toast">Copied</div>
+
+<script>
+/* ================================================================
+   CONFIG — the only part Niki (or Adam) should ever need to edit
+   ================================================================ */
+const CONFIG = {
+  phone: "+12133490834",          // where orders get texted
+  phonePretty: "213.349.0834",
+  instagram: "watanabe_kitchen",
+  price: 100,                     // per bento (feeds two)
+  maxPerOrder: 4,
+  pickupAddress: "1330 Factory Pl",
+  // Days of the week Niki cooks: 0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat
+  cookingDays: [1,2,3,4,5],
+  daysAhead: 14,                  // how far out people can book
+  leadDays: 1,                    // earliest = tomorrow
+  // Away dates — no orders between these (inclusive). Remove or edit as needed.
+  away: { from: "2026-11-28", to: "2026-12-01", note: "Niki's away for the holiday — back in the kitchen Dec 2." },
+  // Specific days that are full or off, as "YYYY-MM-DD"
+  soldOut: [],
+  diets: ["Everything", "Pescatarian", "Vegetarian", "Vegan"],
+  payments: ["Venmo", "Zelle", "Cash"],
+  deliveryNote: "Hand delivery in our building and walking distance (Barker Block, Molino Lofts…)",
+  // When the LA County MEHKO permit is issued, put the number here and it shows in the footer
+  permitNumber: ""
+};
+
+/* ---------------- helpers ---------------- */
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2,"0");
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const smsHref = body => `sms:${CONFIG.phone}?&body=${encodeURIComponent(body)}`;
+
+function chips(container, name, options, opts={}){
+  const el = $(container);
+  options.forEach((o,i)=>{
+    const val = typeof o === "string" ? o : o.value;
+    const label = typeof o === "string" ? o : o.label;
+    const lab = document.createElement("label");
+    lab.className = "chip" + (opts.cls ? " "+opts.cls : "");
+    lab.innerHTML = `<input type="radio" name="${name}" value="${val}"${opts.checkFirst && i===0 ? " checked":""}><span>${label}</span>`;
+    el.appendChild(lab);
+  });
+}
+const picked = name => (document.querySelector(`input[name="${name}"]:checked`)||{}).value || "";
+
+/* ---------------- static bits ---------------- */
+["igTop","igBottom"].forEach(id=>{ $(id).href = `https://instagram.com/${CONFIG.instagram}`; $(id).textContent = "@"+CONFIG.instagram; });
+$("numText").textContent = CONFIG.phonePretty;
+$("numFoot").textContent = CONFIG.phonePretty;
+$("pickupAddr").textContent = CONFIG.pickupAddress;
+$("pitchPrice").textContent = `$${CONFIG.price} for a four-tiered bento filled with enough food for two, on a rotating seasonal menu.`;
+if (CONFIG.permitNumber) $("permit").textContent = `Made in a Home Kitchen · LA County DPH permit #${CONFIG.permitNumber}`;
+$("join").href = smsHref("Hi Niki! Please add me to the Watanabe Kitchen weekly menu list 🍱");
+
+/* ---------------- days ---------------- */
+const today = new Date(); today.setHours(0,0,0,0);
+const awayFrom = CONFIG.away ? new Date(CONFIG.away.from+"T00:00") : null;
+const awayTo   = CONFIG.away ? new Date(CONFIG.away.to+"T00:00") : null;
+if (CONFIG.away && today <= awayTo){
+  $("away").style.display = "block";
+  $("away").innerHTML = `<b>Heads up:</b> ${CONFIG.away.note}`;
+}
+const dayOpts = [];
+for (let i = CONFIG.leadDays; dayOpts.length < 8 && i <= CONFIG.daysAhead + 21; i++){
+  const d = new Date(today); d.setDate(today.getDate()+i);
+  if (!CONFIG.cookingDays.includes(d.getDay())) continue;
+  if (awayFrom && d >= awayFrom && d <= awayTo) continue;
+  if (CONFIG.soldOut.includes(iso(d))) continue;
+  dayOpts.push({ value: `${DOW[d.getDay()]} ${MON[d.getMonth()]} ${d.getDate()}`,
+                 label: `<small>${DOW[d.getDay()]}</small>${MON[d.getMonth()]} ${d.getDate()}` });
+}
+chips("days","day",dayOpts,{cls:"day"});
+chips("diet","diet",CONFIG.diets,{checkFirst:true});
+chips("handoff","handoff",[
+  {value:"Pickup", label:`Pick up · ${CONFIG.pickupAddress}`},
+  {value:"Deliver", label:"Walk it to my door"}
+],{checkFirst:true});
+chips("tins","tins",[
+  {value:"first", label:"First order — I need tins"},
+  {value:"returning", label:"I'll drop my tins at Niki's door"}
+],{checkFirst:true});
+chips("pay","pay",CONFIG.payments);
+
+/* ---------------- qty ---------------- */
+let qty = 1;
+function setQty(n){
+  qty = Math.max(1, Math.min(CONFIG.maxPerOrder, n));
+  $("qty").textContent = qty;
+  $("feeds").textContent = `feeds ${qty*2}`;
+  update();
+}
+$("minus").onclick = ()=>setQty(qty-1);
+$("plus").onclick  = ()=>setQty(qty+1);
+
+/* ---------------- build the text ---------------- */
+function build(){
+  const day = picked("day"), diet = picked("diet"), hand = picked("handoff"),
+        tins = picked("tins"), pay = picked("pay");
+  const name = $("name").value.trim(), phone = $("phone").value.trim(),
+        where = $("where").value.trim(), allergy = $("allergy").value.trim(),
+        notes = $("notes").value.trim();
+  const lines = [
+    `🍱 Bento order — Watanabe Kitchen`,
+    `Day: ${day || "—"}`,
+    `Bentos: ${qty} (feeds ${qty*2}) · $${qty*CONFIG.price}`,
+    `Diet: ${diet}${allergy ? " · " + allergy : ""}`,
+    hand === "Deliver" ? `Deliver to: ${where || "—"}` : `Pickup at ${CONFIG.pickupAddress}`,
+    tins === "returning" ? `Tins: I'll drop mine off at your door` : `Tins: first order, need tins`,
+    `Pay: ${pay || "—"}`,
+    `Name: ${name || "—"}${phone ? " · " + phone : ""}`
+  ];
+  if (notes) lines.push(`Note: ${notes}`);
+  const missing = [];
+  if (!day) missing.push("a day");
+  if (!name) missing.push("your name");
+  if (hand === "Deliver" && !where) missing.push("your building & unit");
+  if (!pay) missing.push("how you're paying");
+  return { text: lines.join("\n"), missing };
+}
+
+function update(){
+  $("whereWrap").classList.toggle("on", picked("handoff")==="Deliver");
+  const { text, missing } = build();
+  $("preview").textContent = text;
+  $("total").textContent = `$${qty*CONFIG.price}`;
+  const send = $("send");
+  if (missing.length){
+    send.setAttribute("aria-disabled","true");
+    send.href = "#";
+    $("missing").textContent = "Still need " + missing.join(", ") + ".";
+  } else {
+    send.removeAttribute("aria-disabled");
+    send.href = smsHref(text);
+    $("missing").textContent = "";
+  }
+}
+$("f").addEventListener("input", update);
+$("f").addEventListener("change", update);
+$("f").addEventListener("submit", e=>e.preventDefault());
+
+/* ---------------- copy ---------------- */
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("on"); setTimeout(()=>t.classList.remove("on"),1600); }
+$("copy").onclick = async ()=>{
+  const { text } = build();
+  try { await navigator.clipboard.writeText(text); toast("Order copied — paste it in a text to Niki"); }
+  catch(e){
+    const r = document.createRange(); r.selectNodeContents($("preview"));
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    toast("Selected — copy it from the box above");
+  }
+};
+
+/* ---------------- remember the neighbor (this browser only) ---------------- */
+try{
+  const saved = JSON.parse(localStorage.getItem("wk_me")||"{}");
+  ["name","phone","where"].forEach(k=>{ if(saved[k]) $(k).value = saved[k]; });
+  $("f").addEventListener("input", ()=>{
+    try{ localStorage.setItem("wk_me", JSON.stringify({name:$("name").value, phone:$("phone").value, where:$("where").value})); }catch(e){}
+  });
+}catch(e){}
+
+update();
+</script>
+</body>
+</html>
