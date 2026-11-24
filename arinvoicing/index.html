@@ -754,7 +754,7 @@ function clientModal(client, onSave, preset = {}) {
     box.innerHTML = `<h2>${isNew ? (P ? 'New person' : 'New company') : (P ? 'Edit person' : 'Edit company')}</h2>
     ${isNew ? `<div class="chips" style="margin-bottom:14px"><button class="chipbtn ${!P ? 'on' : ''}" data-kind="company">Company</button><button class="chipbtn ${P ? 'on' : ''}" data-kind="person">Person</button></div>` : ''}
     <div class="grid g2">
-      ${P ? `<label class="f"><span>Full name</span><input type="text" name="contactName" value="${esc(c.contactName)}" placeholder="e.g. Sylvie Sherman"></label>
+      ${P ? `<label class="f"><span>Full name</span><input type="text" name="contactName" value="${esc(c.contactName)}" placeholder="e.g. Casey Morgan"></label>
         <label class="f"><span>Title / usual role</span><input type="text" name="title" value="${esc(c.title)}" list="dl-roles" placeholder="e.g. Producer"></label>
         <label class="f spanall"><span>Company</span><select name="companyId"><option value="">— Independent (no company) —</option>${companies().map(x => opt(x.id, clientName(x), c.companyId)).join('')}</select></label>`
       : `<label class="f spanall"><span>Company name</span><input type="text" name="company" value="${esc(c.company)}" placeholder="e.g. Field & Form Agency"></label>`}
