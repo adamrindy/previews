@@ -19,5 +19,5 @@ Every save is kept in GitHub's history. To roll back a project, ask Claude to "r
 
 | Version | Commit | Date | What changed |
 |---|---|---|---|
-| v0.3.0 | (this commit) | 2026-11-24 | Import contacts from CSV, Excel (.xlsx) or Apple Contacts (.vcf), with auto column matching, preview and duplicate detection. |
+| v0.3.0 | 4ec4c9e | 2026-11-24 | Import contacts from CSV, Excel (.xlsx) or Apple Contacts (.vcf), with auto column matching, preview and duplicate detection. |
 | v0.2.0 | f4b7da3 | 2026-11-24 | First preview for testers: demo data, feedback button, What's new, one-long-page PDF export, estimate approval line. App build only; source lives in a private repo. |
