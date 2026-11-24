@@ -243,9 +243,10 @@ table.t{width:100%;border-collapse:collapse;background:#fff}
    - Data model is deliberately "flat + UUIDs + defaults everywhere" so it maps 1:1 onto SwiftData/CloudKit later
 */
 'use strict';
-const APP_VERSION = '0.2.0';
+const APP_VERSION = '0.3.0';
 const FEEDBACK_EMAIL = 'adam@adamrindy.com';
 const CHANGELOG = [
+  { v: '0.3.0', date: '2026-11-24', items: ['Import contacts from CSV, Excel (.xlsx) or Apple Contacts (.vcf): Clients → Import contacts. Columns are matched automatically, you preview before anything is saved, and duplicates are caught.'] },
   { v: '0.2.0', date: '2026-11-24', items: [
     'Preview release for testers: a Try demo data button, a Feedback button and this What\'s new window',
     'PDF export now defaults to one long page, so invoices never split across two pages (Settings → Invoice layout → PDF export)',
@@ -898,12 +899,12 @@ function renewLicense(l) {
 function viewClients() {
   const q = ui.clientsQ.toLowerCase();
   const list = S.clients.filter(c => !q || [c.company, c.contactName, c.email, c.phone, c.address, c.licenseeName].join(' ').toLowerCase().includes(q)).sort((a, b) => clientName(a).localeCompare(clientName(b)));
-  return `<div class="wrap">${folderBanner()}<div class="head"><h1>Clients</h1><span class="sp"></span><button class="btn pri" data-act="new-client">+ New client</button></div>
+  return `<div class="wrap">${folderBanner()}<div class="head"><h1>Clients</h1><span class="sp"></span><button class="btn" data-act="import-contacts">Import contacts…</button><button class="btn pri" data-act="new-client">+ New client</button></div>
     <div class="filters"><input type="search" placeholder="Search clients…" data-ui="clientsQ" value="${esc(ui.clientsQ)}"></div>
     <div class="card tablecard">${list.length ? `<table class="t"><thead><tr><th>Client</th><th>Contact</th><th class="num">Jobs</th><th class="num">Invoiced</th><th>Licenses</th></tr></thead><tbody>${list.map(c => {
       const docs = S.documents.filter(d => d.clientId === c.id); const lic = S.licenses.filter(l => l.clientId === c.id);
       return `<tr class="click" data-client="${c.id}"><td><b>${esc(clientName(c))}</b>${c.licenseeName ? `<div class="sub">Brand: ${esc(c.licenseeName)}</div>` : ''}</td><td>${esc(c.contactName)}<div class="sub">${esc(c.email)}</div></td><td class="num">${docs.length}</td><td class="num">${curMapText(sumByCurrency(docs.filter(d => d.kind === 'invoice' && d.status !== 'void'), d => totals(d).total))}</td><td>${lic.length ? lic.map(licBadge).join(' ') : '<span class="sub">—</span>'}</td></tr>`;
-    }).join('')}</tbody></table>` : '<div class="empty">No clients yet.</div>'}</div></div>`;
+    }).join('')}</tbody></table>` : '<div class="empty">No clients yet. <a href="#" data-act="import-contacts">Import your contacts</a> from a spreadsheet, CSV or Apple Contacts.</div>'}</div></div>`;
 }
 function viewClient() {
   const c = clientById(route.id); if (!c) return '<div class="wrap"><div class="empty">Client not found.</div></div>';
@@ -1263,7 +1264,7 @@ function setData() {
     <button class="btn" data-act="export-json">Download full backup (.json)</button>
     <label class="btn">Restore from backup…<input type="file" accept=".json,application/json" data-act-file="import-json" hidden></label>
     <button class="btn" data-act="export-csv">Export invoices (.csv)</button>
-    <button class="btn" data-act="export-lic-csv">Export licenses (.csv)</button></div>
+    <button class="btn" data-act="export-lic-csv">Export licenses (.csv)</button><button class="btn" data-act="import-contacts">Import contacts…</button></div>
     <p class="hint">Restoring replaces everything currently in the app (a safety backup is saved first when a data folder is connected).</p></div>
   <div class="card"><h3>About</h3><div class="sub">ARinvoicing preview v${APP_VERSION} · © 2026 Adam Rindy. All rights reserved. Preview build for testing — not for redistribution.</div><div class="row" style="margin:10px 0"><button class="btn" data-act="whatsnew">What's new</button><button class="btn" data-act="feedback">Send feedback</button>${location.protocol.startsWith('http') ? '<a class="btn" href="./index.html" download="ARinvoicing.html">Download offline copy</a>' : ''}</div><div class="sub">Data schema ${SCHEMA} · data schema ${SCHEMA} · ${S.documents.length} jobs · ${S.clients.length} clients · ${S.licenses.length} licenses · last change ${new Date(S.meta.updatedAt).toLocaleString()}</div>
     <div class="row" style="margin-top:12px"><button class="btn danger" data-act="wipe">Erase all data…</button></div></div>`;
@@ -1384,6 +1385,7 @@ document.addEventListener('click', async e => {
   if (ds.clearimg) { S.profile[ds.clearimg] = ''; touch(); return render(); }
   const a = ds.act; e.preventDefault();
   if (a === 'new-invoice' || a === 'new-estimate') { const d = newDoc(a === 'new-invoice' ? 'invoice' : 'estimate'); S.documents.push(d); touch(d); go('#/doc/' + d.id); }
+  if (a === 'import-contacts') importContactsModal();
   if (a === 'new-client') clientModal(null, c => go('#/client/' + c.id));
   if (a === 'pdf' && curDoc) exportPDF(curDoc);
   if (a === 'jpeg' && curDoc) exportJPEG(curDoc);
@@ -1500,6 +1502,207 @@ function feedback() {
 
 window.ARinvoicing = { get state() { return S; }, renderInvoice, totals, licenseStatus, licenseDates };
 boot();
+</script>
+<script>/* ---------------- contact import: CSV / XLSX / vCard (no external libraries) ---------------- */
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');
+  const first = text.split(/\r?\n/)[0] || '';
+  const delim = [',', ';', '\t'].map(d => [d, first.split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += ch;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => String(c).trim() !== ''));
+}
+async function unzip(buf) {
+  const dv = new DataView(buf); const u8 = new Uint8Array(buf); const files = {};
+  let eocd = -1; for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65600); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('Not a valid .xlsx file');
+  let p = dv.getUint32(eocd + 16, true); const n = dv.getUint16(eocd + 10, true);
+  for (let k = 0; k < n; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nlen = dv.getUint16(p + 28, true), elen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nlen));
+    files[name] = { method, csize, off };
+    p += 46 + nlen + elen + clen;
+  }
+  return async name => {
+    const f = files[name]; if (!f) return null;
+    const start = f.off + 30 + dv.getUint16(f.off + 26, true) + dv.getUint16(f.off + 28, true);
+    const data = u8.subarray(start, start + f.csize);
+    if (f.method === 0) return new TextDecoder().decode(data);
+    const ds = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return await new Response(ds).text();
+  };
+}
+async function readXLSX(buf) {
+  const get = await unzip(buf);
+  const xml = s => new DOMParser().parseFromString(s, 'application/xml');
+  const wb = xml(await get('xl/workbook.xml') || '');
+  const rels = xml(await get('xl/_rels/workbook.xml.rels') || '<r/>');
+  const relMap = {}; [...rels.getElementsByTagName('Relationship')].forEach(r => relMap[r.getAttribute('Id')] = r.getAttribute('Target'));
+  const ss = await get('xl/sharedStrings.xml');
+  const shared = ss ? [...xml(ss).getElementsByTagName('si')].map(si => [...si.getElementsByTagName('t')].map(t => t.textContent).join('')) : [];
+  const sheets = [];
+  for (const s of [...wb.getElementsByTagName('sheet')]) {
+    const rid = s.getAttribute('r:id') || s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+    let target = relMap[rid] || ''; target = target.replace(/^\/?(xl\/)?/, 'xl/');
+    const sx = await get(target); if (!sx) continue;
+    const rows = [];
+    for (const r of [...xml(sx).getElementsByTagName('row')]) {
+      const row = [];
+      for (const c of [...r.getElementsByTagName('c')]) {
+        const ref = c.getAttribute('r') || ''; const col = ref.replace(/\d+/g, '');
+        let idx = 0; for (const ch of col) idx = idx * 26 + (ch.charCodeAt(0) - 64); idx = col ? idx - 1 : row.length;
+        const t = c.getAttribute('t'); const v = c.getElementsByTagName('v')[0]?.textContent ?? '';
+        let val = t === 's' ? (shared[+v] ?? '') : t === 'inlineStr' ? [...c.getElementsByTagName('t')].map(x => x.textContent).join('') : t === 'b' ? (v === '1' ? 'TRUE' : 'FALSE') : v;
+        row[idx] = val;
+      }
+      rows.push([...row].map(x => x ?? ''));
+    }
+    sheets.push({ name: s.getAttribute('name'), rows: rows.filter(r => r.some(c => String(c).trim() !== '')) });
+  }
+  return sheets;
+}
+function parseVCF(text) {
+  const lines = text.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '').split(/\r?\n/);
+  const out = []; let c = null;
+  const val = l => l.slice(l.indexOf(':') + 1).replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\;/g, ';').trim();
+  for (const l of lines) {
+    const key = l.split(':')[0].split(';')[0].toUpperCase().replace(/^ITEM\d+\./, '');
+    if (key === 'BEGIN') c = {};
+    else if (key === 'END' && c) { out.push(c); c = null; }
+    else if (!c) continue;
+    else if (key === 'FN') c.fullName = val(l);
+    else if (key === 'N') { const [last, first] = val(l).split(';'); c.firstName = first || ''; c.lastName = last || ''; }
+    else if (key === 'ORG') c.company = val(l).split(';').filter(Boolean).join(' ');
+    else if (key === 'EMAIL' && !c.email) c.email = val(l);
+    else if (key === 'TEL' && !c.phone) c.phone = val(l);
+    else if (key === 'ADR' && !c.street) { const a = val(l).split(';'); [, , c.street, c.city, c.state, c.zip, c.country] = a; }
+    else if (key === 'NOTE') c.notes = val(l);
+    else if (key === 'TITLE') c.title = val(l);
+  }
+  const cols = ['company', 'fullName', 'firstName', 'lastName', 'email', 'phone', 'street', 'city', 'state', 'zip', 'country', 'title', 'notes'];
+  return [cols, ...out.map(o => cols.map(k => o[k] || ''))];
+}
+const IMPORT_FIELDS = [
+  ['company', 'Company'], ['fullName', 'Full name'], ['firstName', 'First name'], ['lastName', 'Last name'], ['email', 'Email'], ['phone', 'Phone'],
+  ['street', 'Street'], ['street2', 'Street line 2'], ['city', 'City'], ['state', 'State / region'], ['zip', 'ZIP / postal code'], ['country', 'Country'],
+  ['address', 'Full address (one field)'], ['title', 'Job title'], ['notes', 'Notes'],
+];
+const FIELD_SYNONYMS = {
+  company: ['company', 'company name', 'organization', 'organisation', 'org', 'organization name', 'organization 1 - name', 'business', 'business name', 'client', 'account', 'agency'],
+  fullName: ['name', 'full name', 'contact', 'contact name', 'display name', 'fullname'],
+  firstName: ['first name', 'firstname', 'given name', 'first'],
+  lastName: ['last name', 'lastname', 'family name', 'surname', 'last'],
+  email: ['email', 'e-mail', 'email address', 'e-mail address', 'e-mail 1 - value', 'email 1', 'primary email', 'work email', 'e-mail 1'],
+  phone: ['phone', 'telephone', 'phone number', 'mobile', 'mobile phone', 'cell', 'cell phone', 'business phone', 'work phone', 'phone 1 - value', 'primary phone', 'office phone'],
+  street: ['address', 'street', 'street address', 'address 1', 'address line 1', 'address1', 'business street', 'address 1 - street', 'mailing street', 'billing street'],
+  street2: ['address 2', 'address line 2', 'address2', 'business street 2', 'suite', 'apt'],
+  city: ['city', 'town', 'business city', 'address 1 - city', 'mailing city', 'billing city'],
+  state: ['state', 'province', 'region', 'state/province', 'business state', 'address 1 - region', 'mailing state', 'billing state'],
+  zip: ['zip', 'zip code', 'zipcode', 'postal code', 'postcode', 'post code', 'business postal code', 'address 1 - postal code', 'mailing zip', 'billing zip'],
+  country: ['country', 'country/region', 'business country/region', 'address 1 - country', 'mailing country', 'billing country'],
+  address: ['full address', 'address 1 - formatted', 'mailing address', 'billing address'],
+  title: ['title', 'job title', 'position', 'role', 'organization 1 - title'],
+  notes: ['notes', 'note', 'comments', 'comment', 'description'],
+};
+const normH = h => String(h || '').toLowerCase().replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim();
+function guessMapping(headers) {
+  const map = {}; const used = new Set(); const H = headers.map(normH);
+  for (const [f] of IMPORT_FIELDS) { const i = H.findIndex((h, j) => !used.has(j) && FIELD_SYNONYMS[f].includes(h)); if (i >= 0) { map[f] = i; used.add(i); } }
+  const loose = [['email', /e-?mail/], ['phone', /phone|mobile|cell|tel/], ['company', /company|organi[sz]ation/], ['zip', /zip|postal/], ['city', /city/], ['country', /country/]];
+  for (const [f, re] of loose) if (map[f] == null) { const i = H.findIndex((h, j) => !used.has(j) && re.test(h)); if (i >= 0) { map[f] = i; used.add(i); } }
+  if (map.fullName != null && (map.firstName != null || map.lastName != null)) { /* prefer first/last when both exist */ }
+  return map;
+}
+function rowToClient(row, map) {
+  const g = f => map[f] == null ? '' : String(row[map[f]] ?? '').trim();
+  const name = g('fullName') || [g('firstName'), g('lastName')].filter(Boolean).join(' ');
+  let address = g('address');
+  if (!address) {
+    const cityLine = [g('city'), [g('state'), g('zip')].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    address = [g('street'), g('street2'), cityLine, g('country')].filter(Boolean).join('\n');
+  }
+  const notes = [g('title') && 'Title: ' + g('title'), g('notes')].filter(Boolean).join('\n');
+  return { company: g('company'), contactName: name, email: g('email'), phone: g('phone'), address, notes };
+}
+function findDuplicate(c) {
+  const em = c.email.toLowerCase();
+  return S.clients.find(x => (em && (x.email || '').toLowerCase() === em) ||
+    (!em && (x.company || '').toLowerCase() === c.company.toLowerCase() && (x.contactName || '').toLowerCase() === c.contactName.toLowerCase()));
+}
+function importContactsModal() {
+  const st = { sheets: null, sheet: 0, header: true, map: {}, dupMode: 'skip', fileName: '' };
+  const bg = modal(`<h2>Import contacts</h2><div id="imp"></div>`, { wide: true });
+  const box = $('#imp', bg);
+  const rowsAll = () => st.sheets ? st.sheets[st.sheet].rows : [];
+  const headers = () => { const r = rowsAll(); const w = Math.max(0, ...r.map(x => x.length)); return st.header ? Array.from({ length: w }, (_, i) => r[0]?.[i] || `Column ${i + 1}`) : Array.from({ length: w }, (_, i) => `Column ${i + 1}`); };
+  const dataRows = () => st.header ? rowsAll().slice(1) : rowsAll();
+  const results = () => {
+    const seen = new Set(); const out = { add: [], dup: [], empty: 0 };
+    for (const r of dataRows()) {
+      const c = rowToClient(r, st.map);
+      if (!c.company && !c.contactName && !c.email) { out.empty++; continue; }
+      const key = (c.email || (c.company + '|' + c.contactName)).toLowerCase(); if (seen.has(key)) { out.empty++; continue; } seen.add(key);
+      const d = findDuplicate(c); if (d) out.dup.push([c, d]); else out.add.push(c);
+    }
+    return out;
+  };
+  function step1(err = '') {
+    box.innerHTML = `<p class="sub">Bring in your address book from BlinkBid, Google Contacts, Outlook, Apple Contacts or any spreadsheet. Nothing is saved until you confirm.</p>
+      <label class="btn pri" style="padding:10px 16px">Choose file…<input type="file" accept=".csv,.tsv,.txt,.xlsx,.xls,.vcf,.vcard,text/csv" hidden id="imp-file"></label>
+      <p class="hint" style="margin-top:10px">Accepts <b>.csv</b>, <b>.xlsx</b> (Excel / Numbers) and <b>.vcf</b> (Apple Contacts / iCloud). Older <b>.xls</b> files: open them in Excel or Numbers and save as .xlsx or CSV first.</p>
+      ${err ? `<div class="banner" style="background:#fbe3e0;border-color:#efb1a8">${esc(err)}</div>` : ''}`;
+    $('#imp-file', box).addEventListener('change', async e => {
+      const f = e.target.files[0]; if (!f) return; st.fileName = f.name;
+      try {
+        const ext = f.name.split('.').pop().toLowerCase();
+        if (ext === 'xls') throw new Error('This is an older Excel (.xls) file. Open it in Excel or Numbers, choose File → Save As (or Export) → .xlsx or CSV, then import that file.');
+        if (ext === 'xlsx' || ext === 'xlsm') { st.sheets = await readXLSX(await f.arrayBuffer()); if (!st.sheets.length) throw new Error('No sheets with data found in that workbook.'); st.sheet = Math.max(0, st.sheets.findIndex(s => s.rows.length)); }
+        else if (ext === 'vcf' || ext === 'vcard') st.sheets = [{ name: 'Contacts', rows: parseVCF(await f.text()) }];
+        else st.sheets = [{ name: f.name, rows: parseCSV(await f.text()) }];
+        if (!rowsAll().length) throw new Error('That file has no rows.');
+        st.map = guessMapping(headers()); step2();
+      } catch (er) { step1(er.message || String(er)); }
+    });
+  }
+  function step2() {
+    const H = headers(); const R = results(); const preview = R.add.slice(0, 6).concat(R.dup.slice(0, Math.max(0, 6 - R.add.length)).map(x => ({ ...x[0], dup: true })));
+    box.innerHTML = `<div class="row" style="margin-bottom:10px"><b>${esc(st.fileName)}</b><span class="sub">${dataRows().length} rows</span><span style="flex:1"></span>
+        ${st.sheets.length > 1 ? `<select id="imp-sheet" style="width:auto">${st.sheets.map((s, i) => `<option value="${i}" ${i === st.sheet ? 'selected' : ''}>Sheet: ${esc(s.name)}</option>`).join('')}</select>` : ''}
+        <label class="chk"><input type="checkbox" id="imp-head" ${st.header ? 'checked' : ''}> First row is column names</label><button class="btn sm" id="imp-back">Choose another file</button></div>
+      <div class="card" style="padding:12px 14px"><h3>Match columns</h3><div class="grid g3">${IMPORT_FIELDS.map(([f, l]) => `<label class="f"><span>${l}</span><select data-map="${f}"><option value="">—</option>${H.map((h, i) => `<option value="${i}" ${st.map[f] === i ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></label>`).join('')}</div>
+        <div class="hint" style="margin-top:8px">Columns were matched automatically. Fix anything that's off; the preview updates as you go.</div></div>
+      <div class="card tablecard"><table class="t"><thead><tr><th>Company</th><th>Contact</th><th>Email / phone</th><th>Address</th></tr></thead><tbody>${preview.map(c => `<tr style="${c.dup ? 'opacity:.55' : ''}"><td>${esc(c.company) || '<span class="sub">—</span>'}${c.dup ? '<div><span class="badge">Already a client</span></div>' : ''}</td><td>${esc(c.contactName) || '<span class="sub">—</span>'}</td><td>${esc(c.email)}<div class="sub">${esc(c.phone)}</div></td><td style="white-space:pre-line;font-size:12px">${esc(c.address)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">Nothing to import with this column matching.</td></tr>'}</tbody></table></div>
+      <div class="row" style="margin-top:4px"><span><b>${R.add.length}</b> new contact${R.add.length === 1 ? '' : 's'}</span>
+        ${R.dup.length ? `<span>· <b>${R.dup.length}</b> already in your clients</span><select id="imp-dup" style="width:auto">${opt('skip', 'Skip those', st.dupMode)}${opt('fill', 'Fill in their missing details', st.dupMode)}</select>` : ''}
+        ${R.empty ? `<span class="sub">· ${R.empty} blank or repeated row${R.empty === 1 ? '' : 's'} ignored</span>` : ''}</div>
+      <div class="acts"><button class="btn" data-a="cancel">Cancel</button><button class="btn pri" id="imp-go" ${R.add.length || (R.dup.length && st.dupMode === 'fill') ? '' : 'disabled'}>Import ${R.add.length} contact${R.add.length === 1 ? '' : 's'}${R.dup.length && st.dupMode === 'fill' ? ` + update ${R.dup.length}` : ''}</button></div>`;
+    $$('[data-map]', box).forEach(s => s.addEventListener('change', () => { const v = s.value; if (v === '') delete st.map[s.dataset.map]; else st.map[s.dataset.map] = +v; step2(); }));
+    $('#imp-head', box).addEventListener('change', e => { st.header = e.target.checked; st.map = st.header ? guessMapping(headers()) : {}; step2(); });
+    $('#imp-sheet', box)?.addEventListener('change', e => { st.sheet = +e.target.value; st.map = guessMapping(headers()); step2(); });
+    $('#imp-dup', box)?.addEventListener('change', e => { st.dupMode = e.target.value; step2(); });
+    $('#imp-back', box).addEventListener('click', () => step1());
+    $('[data-a="cancel"]', box).addEventListener('click', () => bg.remove());
+    $('#imp-go', box).addEventListener('click', () => {
+      const R2 = results(); let upd = 0;
+      R2.add.forEach(c => S.clients.push({ id: uid(), ...c, licenseeName: '', createdAt: nowISO(), source: 'import' }));
+      if (st.dupMode === 'fill') R2.dup.forEach(([c, d]) => { let ch = false; ['company', 'contactName', 'email', 'phone', 'address', 'notes'].forEach(k => { if (!d[k] && c[k]) { d[k] = c[k]; ch = true; } }); if (ch) upd++; });
+      touch(); bg.remove(); go('#/clients');
+      toast(`Imported ${R2.add.length} contact${R2.add.length === 1 ? '' : 's'}${upd ? `, updated ${upd}` : ''}`, 3500);
+    });
+  }
+  step1();
+}
 </script>
 </body>
 </html>
