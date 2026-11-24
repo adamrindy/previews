@@ -14,3 +14,9 @@ Every save is kept in GitHub's history. To roll back a project, ask Claude to "r
 | Version | Commit | Date | What changed |
 |---|---|---|---|
 | v1 | 5d937ef | 2026-11-24 | Guide for AR Beauty panel v3.8.2: every button explained, clickable panel map, What's new. Guide only; the plugin, code and brushes are not published here. |
+
+## ARinvoicing (`arinvoicing/`)
+
+| Version | Commit | Date | What changed |
+|---|---|---|---|
+| v0.2.0 | (this commit) | 2026-11-24 | First preview for testers: demo data, feedback button, What's new, one-long-page PDF export, estimate approval line. App build only; source lives in a private repo. |
