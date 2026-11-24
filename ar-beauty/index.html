@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>AR Beauty — Photoshop panel (Preview)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Plan: one dark visual world that matches the panel itself (graphite + rose-gold).
+   Layout: sticky clickable panel replica on the left, reference cards on the right; stacks on phones. */
+:root {
+  --bg: #141315;
+  --surface: #1d1b1e;
+  --raised: #262427;
+  --line: #36313a;
+  --text: #e6dfd9;
+  --muted: #9a918b;
+  --accent: #c99a86;
+  --accent-ink: #1d1716;
+  --display: "Sora", "Avenir Next", "Segoe UI", sans-serif;
+  --body: "Manrope", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--body); font-size: 15px; line-height: 1.55; }
+a { color: var(--accent); }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; }
+
+.wrap { max-width: 1240px; margin: 0 auto; padding: 32px 24px 80px; }
+header.top { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+.mark { width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+  font-family: var(--display); font-weight: 700; display: grid; place-items: center; letter-spacing: 1px; flex: none; }
+h1 { font-size: 28px; letter-spacing: 0.5px; }
+.sub { color: var(--muted); margin: 4px 0 0; }
+
+.flow { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 8px; padding: 0; list-style: none; counter-reset: f; }
+.flow li { counter-increment: f; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px 6px 8px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.flow li::before { content: counter(f); width: 20px; height: 20px; border-radius: 50%; background: var(--raised); color: var(--accent); font-weight: 700; font-size: 11px; display: grid; place-items: center; }
+.rules { display: flex; flex-wrap: wrap; gap: 8px 24px; color: var(--muted); font-size: 13px; margin: 10px 0 28px; }
+.rules b { color: var(--text); font-weight: 600; }
+
+.layout { display: grid; grid-template-columns: 286px 1fr; gap: 36px; align-items: start; }
+
+/* ---------- panel replica ---------- */
+.replica { position: sticky; top: 16px; background: #19181a; border: 1px solid var(--line); border-radius: 12px; padding: 14px 12px; max-height: calc(100vh - 32px); overflow-y: auto; }
+.replica .hint { font-size: 11.5px; color: var(--muted); margin: 0 2px 10px; }
+.rp-sec { font-size: 9.5px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--muted); border-top: 1px solid var(--line); padding: 8px 2px 6px; margin-top: 4px; display: flex; justify-content: space-between; }
+.rp-row { display: flex; gap: 4px; margin-bottom: 4px; }
+.rp-row button { flex: 1 1 0; min-width: 0; height: 26px; background: #2a282b; border: 1px solid #3a3639; border-radius: 4px; color: var(--text);
+  font: 500 11px var(--body); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 3px; }
+.rp-row button.sm { height: 22px; font-size: 10px; }
+.rp-row button.acc { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.rp-row button:hover, .rp-row button:focus-visible { border-color: var(--accent); outline: none; }
+.rp-row button.cur { box-shadow: 0 0 0 2px var(--accent) inset; }
+.rp-row .lbl { flex: none; font-size: 10px; color: var(--muted); align-self: center; padding: 0 4px 0 2px; }
+.rp-row .slider { flex: 1; height: 4px; background: var(--line); border-radius: 2px; align-self: center; position: relative; cursor: pointer; }
+.rp-row .slider::after { content: ""; position: absolute; left: 18%; top: -5px; width: 14px; height: 14px; border-radius: 50%; background: var(--text); }
+.rp-row .rp-round { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 1px solid #3a3639; background: #2a282b; color: var(--accent);
+  font: 600 11px var(--body); cursor: pointer; padding: 0; display: grid; place-items: center; }
+.rp-row .rp-round.rp-i { font-style: italic; font-weight: 700; }
+.rp-row .rp-round:hover, .rp-row .rp-round:focus-visible { border-color: var(--accent); outline: none; }
+.rp-row .rp-round.cur { box-shadow: 0 0 0 2px var(--accent) inset; }
+.rp-head-link { color: var(--accent); text-transform: none; letter-spacing: 0; font-size: 10.5px; cursor: pointer; background: none; border: 0; font-family: var(--body); padding: 0; }
+.rp-status { margin-top: 8px; border: 1px solid var(--line); border-radius: 4px; padding: 5px 6px; font-size: 10px; color: var(--muted); cursor: pointer; }
+
+/* ---------- reference ---------- */
+.search { width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; color: var(--text); font: 15px var(--body); padding: 11px 14px; margin-bottom: 24px; }
+.search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+section.grp { margin-bottom: 36px; scroll-margin-top: 16px; }
+section.grp > h2 { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+section.grp > p.intro { color: var(--muted); margin: 0 0 14px; max-width: 70ch; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; scroll-margin-top: 16px; transition: border-color .3s, box-shadow .3s; }
+.card.flash { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(201,154,134,.25); }
+.card h3 { font-size: 15px; display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.chip { font-family: var(--body); font-size: 11px; font-weight: 700; background: var(--raised); border: 1px solid var(--line); border-radius: 4px; padding: 2px 7px; color: var(--text); }
+.chip.acc { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.card p { margin: 0 0 8px; }
+.card ol { margin: 6px 0 8px; padding-left: 20px; }
+.card ol li { margin-bottom: 3px; }
+.card .tip { font-size: 13px; color: var(--muted); border-left: 2px solid var(--accent); padding-left: 10px; margin: 8px 0 0; }
+.card .makes { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.card .makes code { font-family: var(--body); font-weight: 600; color: var(--text); background: var(--raised); padding: 1px 5px; border-radius: 3px; }
+.empty { color: var(--muted); display: none; }
+
+
+.news { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px 8px; margin: 0 0 28px; }
+.news h2 { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+.news details { border-top: 1px solid var(--line); padding: 8px 0; }
+.news details:first-of-type { border-top: 0; }
+.news summary { cursor: pointer; display: flex; align-items: baseline; gap: 12px; list-style: none; }
+.news summary::-webkit-details-marker { display: none; }
+.news summary::before { content: "▸"; color: var(--muted); font-size: 11px; width: 10px; }
+.news details[open] summary::before { content: "▾"; }
+.news .ver { font-family: var(--display); font-weight: 600; font-variant-numeric: tabular-nums; }
+.news .date { color: var(--muted); font-size: 13px; }
+.news .older > details { margin-left: 22px; }
+.news ul { margin: 6px 0 4px 22px; padding-left: 18px; }
+.news li { margin-bottom: 3px; max-width: 80ch; }
+.news summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; }
+  .replica { position: static; max-height: none; }
+}
+@media (prefers-reduced-motion: reduce) { .card { transition: none; } html { scroll-behavior: auto; } }
+.preview-tag{position:fixed;top:10px;right:10px;z-index:50;background:#ffd166;color:#2b211b;font:700 11px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;padding:6px 10px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+</style>
+</head>
+<body>
+<div class="preview-tag">Preview</div>
+<div class="wrap">
+  <header class="top">
+    <div class="mark">AR</div>
+    <div>
+      <h1>AR Beauty Panel Guide</h1>
+      <p class="sub">A beauty-retouching panel for Adobe Photoshop. This is its guide: what every button does, and how to use the ones that need a few steps. Panel v3.8.2.</p>
+    </div>
+  </header>
+
+  <ol class="flow" aria-label="Typical retouch order">
+    <li>Clean up: Heal / Clone / Remove Hairs</li>
+    <li>Skin: FS or Foundation</li>
+    <li>Dodge &amp; Burn</li>
+    <li>Face &amp; hair</li>
+    <li>Color: Adjust</li>
+    <li>Check layers</li>
+    <li>Finish &amp; export</li>
+  </ol>
+  <div class="rules">
+    <span><b>One undo each:</b> every button is a single history step named “AR · …”.</span>
+    <span><b>Paint it in:</b> effects come with a hidden mask, brush selected, white ready.</span>
+    <span><b>Fade it:</b> lower the group’s opacity.</span>
+    <span><b>Hover:</b> the panel’s status bar describes each button and shows any error.</span>
+  </div>
+
+<section class="news" id="whats-new" aria-label="What’s new"><h2>What’s new</h2><details open><summary><span class="ver">v3.8.2</span><span class="date">Nov 20, 2026</span></summary><ul><li>Stamp Visible, Merge Visible and every effect that stamps first (FS, Foundation, Glow, Liquify, Sharpen and more) now work when the top layer is turned off. They start from the topmost visible layer, and the stamp still lands at the top of the stack.</li></ul></details><details><summary><span class="ver">v3.8.1</span><span class="date">Nov 15, 2026</span></summary><ul><li>Guide: the ⇅ and i buttons in the clickable panel map now match the panel’s round header buttons.</li></ul></details><details open><summary><span class="ver">v3.8</span><span class="date">Nov 15, 2026</span></summary><ul><li>Arrange mode: click ⇅ in the header and drag sections into your own order. Done locks it, Reset restores the original order, and your order is remembered.</li></ul></details><details><summary><span class="ver">v3.7</span><span class="date">Nov 15, 2026</span></summary><ul><li>Release cleanup: brush buttons use only the AR brush names, and the action slots start empty until you assign them.</li><li>New customer license (LICENSE.txt) and a user-facing README.</li></ul></details><details><summary><span class="ver">v3.6</span><span class="date">Nov 13, 2026</span></summary><ul><li>Subject, Lights and Darks combine with your current selection: Shift adds, Option subtracts, Shift+Option intersects. People-part buttons gain Shift+Option intersect too.</li><li>Copyright notice in the panel files and a LICENSE.txt.</li></ul></details><details><summary><span class="ver">v3.5.5</span><span class="date">Nov 13, 2026</span></summary><ul><li>De-Shine with Auto-mask (or a selection) now targets only the shiniest areas via a highlight map, instead of dulling every highlight on the face.</li><li>Skin Tone joins Auto-mask and covers all visible skin.</li><li>Auto-mask edges are softened so masks don’t show a hard line at the hairline or jaw.</li><li>Redness and De-Shine share one mask engine (fewer steps, same results).</li></ul></details><details><summary><span class="ver">v3.5.4</span><span class="date">Nov 13, 2026</span></summary><ul><li>Redness now targets only areas redder than the surrounding skin (an automatic redness mask) instead of the whole face, so even skin tone isn’t desaturated.</li></ul></details><details><summary><span class="ver">v3.5.3</span><span class="date">Nov 12, 2026</span></summary><ul><li>FS Gaussian and FS Median now finish with your FS tool setup: Clone Stamp set to sample Current Layer, and you land on FS Low with the Mixer Brush (Sample All Layers off).</li></ul></details><details><summary><span class="ver">v3.5.2</span><span class="date">Nov 12, 2026</span></summary><ul><li>Added this What’s new section to the guide, plus a CHANGELOG file in the panel folder.</li></ul></details><details open><summary><span class="ver">v3.5.1</span><span class="date">Nov 12, 2026</span></summary><ul><li>16-bit: Foundation and De-Blotch now use the lossless 16-bit Apply Image recipe (Add + Invert, Scale 2, Offset 0), matching FS Gaussian / FS Median.</li><li>32-bit files get a clear message for effects that need Apply Image add/subtract.</li></ul></details><details><summary><span class="ver">v3.5</span><span class="date">Nov 12, 2026</span></summary><ul><li>Your own AR brush pack: 13 brushes and 4 clone tips with original tips (hair strands that follow the stroke, curled lashes, organic iris, freckles, sparkle, pencil, skin).</li><li>Brush buttons select the AR brushes.</li></ul></details><details class="older"><summary><span class="ver">Earlier versions</span><span class="date">3.0 – 3.4.2</span></summary><details><summary><span class="ver">v3.4.2</span><span class="date">Nov 12, 2026</span></summary><ul><li>The panel scrolls inside itself, so it works on laptop screens as well as large displays.</li></ul></details><details><summary><span class="ver">v3.4.1</span><span class="date">Nov 12, 2026</span></summary><ul><li>Dodge and Burn work on their own: they jump to an existing Dodge or Burn mask, or add a single masked curve if there isn’t one.</li></ul></details><details><summary><span class="ver">v3.4</span><span class="date">Nov 12, 2026</span></summary><ul><li>i button opens this guide.</li><li>Installable .ccx package (no UXP Developer Tools needed).</li><li>Layers row: New Layer, Stamp Visible, Merge Visible.</li><li>Add Texture and Remove Hairs (editable Smart Object filters).</li><li>FS radius: − / + / slider (default 7 px) with Preview, which opens the blur dialog with live preview.</li><li>Web long edge presets for Export Web.</li><li>One-click brush import from the panel’s assets folder.</li><li>Select People part selections fixed for Photoshop 28 (exact part names, parts missing from the photo are skipped).</li></ul></details><details><summary><span class="ver">v3.3</span><span class="date">Nov 12, 2026</span></summary><ul><li>Select People (AI) part selections: Skin, Body, Eyes, Whites, Lips, Teeth, Hair, Brows, with Shift = add and Option = subtract.</li><li>Auto-mask: face and skin effects select their own part first.</li></ul></details><details><summary><span class="ver">v3.2</span><span class="date">Nov 12, 2026</span></summary><ul><li>Brushes section with one-click brush and clone-tip buttons.</li></ul></details><details><summary><span class="ver">v3.1</span><span class="date">Nov 12, 2026</span></summary><ul><li>Foundation, De-Blotch and De-Shine with a Lite / Med / Strong setting.</li><li>Rewritten Eyes, Teeth, Redness and Glow; new Whites, Lips, Hair Dark and Hair Blonde. Each builds a masked group.</li></ul></details><details><summary><span class="ver">v3.0</span><span class="date">Nov 12, 2026</span></summary><ul><li>First version of the new panel: tools, Dodge & Burn, frequency separation, selections, adjustment layers, check layers, 12 action slots, finish and export. Every button is one undo step.</li></ul></details></details></section>
+  <div class="layout">
+    <aside class="replica" aria-label="Panel map">
+      <p class="hint">Click any button to jump to its explanation.</p>
+      <div id="replica"></div>
+    </aside>
+    <main>
+      <input class="search" id="q" type="search" placeholder="Search buttons, e.g. teeth, radius, export" aria-label="Search the guide">
+      <p class="empty" id="empty">No button matches that search.</p>
+      <div id="ref"></div>
+    </main>
+  </div>
+  <p class="sub" style="margin-top:40px;font-size:12.5px">© 2026 Adam Rindy / Adam Rindy Photography. All rights reserved. Use is governed by the license (LICENSE.txt) included with the panel.</p>
+</div>
+
+<script>
+/* Content: one entry per button. steps = instructions; tip = practical note; makes = layers created. */
+const S = [
+ { id: "panelctl", title: "Panel controls", intro: "The two round buttons in the panel header, next to the AR logo.", rows: [
+   ["arrangeBtn:⇅ Arrange:sm","openGuide:i  Guide:sm"]],
+   items: {
+    arrangeBtn: { n: "⇅ Arrange", p: "Rearrange the sections into the order you work in. Your order is remembered.",
+      steps: ["Click ⇅. The sections fold down to their headings.", "Drag a heading up or down; a rose line shows where it will land.", "Click Done (or ⇅ again) to lock the panel.", "Reset puts the original order back."],
+      tip: "Example: drag Dodge & Burn below Skin & Frequency Separation if you separate frequencies first." },
+    openGuide: { n: "i  Guide", p: "Opens this guide in your browser. The first time, Photoshop asks to allow it: click Allow." }
+ }},
+ { id: "tools", title: "Tools", intro: "Switches Photoshop to a tool. Nothing is added to your file.", rows: [
+   ["toolBrush:Brush:sm","toolClone:Clone:sm","toolHeal:Heal:sm","toolLasso:Lasso:sm","toolPen:Pen:sm","toolCrop:Crop:sm"]],
+   items: {
+    toolBrush: { n: "Brush", p: "Selects the Brush tool." },
+    toolClone: { n: "Clone", p: "Selects the Clone Stamp tool.", tip: "Pick a tip from the Clone Stamp row in the Brushes section." },
+    toolHeal: { n: "Heal", p: "Selects the Spot Healing Brush for blemishes and stray hairs." },
+    toolLasso: { n: "Lasso", p: "Selects the Lasso tool for quick freehand selections." },
+    toolPen: { n: "Pen", p: "Selects the Pen tool for precise paths." },
+    toolCrop: { n: "Crop", p: "Selects the Crop tool." }
+ }},
+ { id: "layers", title: "Layers", intro: "Everyday layer commands.", rows: [
+   ["newLayer:New Layer:sm","stamp:Stamp Vis.:sm","mergeVisible:Merge Vis.:sm"]],
+   items: {
+    newLayer: { n: "New Layer", p: "Adds a blank layer above the selected layer. Use it for healing and cloning so your edits stay separate.", tip: "Set Heal or Clone to sample “Current & Below” when working on a blank layer." },
+    stamp: { n: "Stamp Vis.", p: "Makes a merged copy of everything visible and puts it at the top of the stack. Your layers underneath stay as they are.", makes: "Stamp Visible", tip: "Same as ⌘⌥⇧E." },
+    mergeVisible: { n: "Merge Vis.", p: "Combines all visible layers into one. The separate layers are gone afterward.", tip: "Same as ⌘⇧E. Prefer Stamp Vis. if you might want to go back." }
+ }},
+ { id: "db", title: "Dodge & Burn", intro: "Two ways to shape light: curves layers (most control) or a single gray layer (fastest).", rows: [
+   ["dbCurves:D&B Curves","dbGray:D&B Gray"],["paintDodge:Dodge","paintBurn:Burn","swapColors:⇄:sm"]],
+   items: {
+    dbCurves: { n: "D&B Curves", p: "Builds a Dodge & Burn group with a brightening curve and a darkening curve, both in Luminosity mode so colors don’t shift. Both masks start hidden.",
+      steps: ["Click D&B Curves. The Dodge mask is selected and the brush is set to white.", "Set the brush to soft, Opacity 100%, Flow 1–5%.", "Paint over shadows you want lifted (blemish halos, uneven texture).", "Click Burn to switch masks, then paint over spots that are too bright.", "Press ⇄ (or X) to paint black and erase an area."],
+      makes: "Dodge & Burn › Dodge, Burn", tip: "Turn on Visual Aid while you work. It strips color so you only see light and shadow." },
+    dbGray: { n: "D&B Gray", p: "Adds one 50% gray layer in Soft Light. Paint white to brighten and black to darken, all on the same layer.",
+      steps: ["Click D&B Gray. Brush is selected, colors set to black and white.", "Use a soft brush with low opacity or flow.", "Paint white to dodge, press X, paint black to burn."], makes: "D&B Gray" },
+    paintDodge: { n: "Dodge", p: "If a Dodge layer exists (from D&B Curves or an earlier click), jumps to its mask with the brush and white ready. If not, adds a single Dodge curve (Luminosity, hidden mask) and gets you painting.", makes: "Dodge (when none exists)" },
+    paintBurn: { n: "Burn", p: "Same as Dodge for darkening: jumps to the existing Burn mask, or adds a single Burn curve with a hidden mask.", makes: "Burn (when none exists)" },
+    swapColors: { n: "⇄ Swap", p: "Swaps foreground and background colors, the same as pressing X. Use it to switch between painting an effect in and erasing it." }
+ }},
+ { id: "skin", title: "Skin & Frequency Separation", intro: "Smoothing that keeps real skin texture. Foundation, De-Blotch and De-Shine follow the Strength setting.", rows: [
+   [":Strength:lbl","strLite:Lite:sm","strMed:Med:sm","strStrong:Strong:sm"],
+   ["foundation:Foundation","deBlotch:De-Blotch","deShine:De-Shine"],
+   [":FS radius:lbl","fsMinus:−:sm","fsVal:7 px:sm","fsPlus:+:sm","fsDialog:Preview:sm"],
+   ["fsSlider::slider"],
+   ["fsGaussian:FS Gaussian","fsMedian:FS Median"],
+   ["glow:Glow","grain:Grain"],
+   ["addTexture:Add Texture","removeHairs:Remove Hairs"]],
+   items: {
+    strLite: { n: "Strength: Lite / Med / Strong", p: "Sets how hard Foundation, De-Blotch and De-Shine work. The highlighted one is active and is remembered." },
+    strMed: { alias: "strLite" }, strStrong: { alias: "strLite" },
+    foundation: { n: "Foundation", p: "Smooths skin like a light foundation while putting the fine pore texture back on top, so skin doesn’t look plastic.",
+      steps: ["Pick a Strength.", "Click Foundation (or select the skin first, or turn on Auto-mask).", "Paint white over skin. Avoid eyes, brows, lips and hairline.", "Fade with the group’s opacity."], makes: "Foundation › Smooth, Texture" },
+    deBlotch: { n: "De-Blotch", p: "Evens out blotchy color and tone across larger areas while keeping more detail than Foundation.", steps: ["Click De-Blotch.", "Paint over patchy areas: cheeks, forehead, chin, neck.", "Pairs well after a Lite Foundation."], makes: "De-Blotch › Smooth, Texture" },
+    deShine: { n: "De-Shine", p: "Tames shiny, hot highlights from flash or sweat, with a small saturation correction so the area doesn’t look muddy.", steps: ["With Auto-mask on (or a selection), click De-Shine: it builds a highlight map and masks only the shiniest spots, typically forehead, nose and cheekbones.", "With Auto-mask off and nothing selected, the mask starts hidden: paint over the shine yourself.", "Paint black on the mask to keep any highlight you like."], makes: "De-Shine › Highlights, Saturation (mask = shine map)" },
+    fsMinus: { n: "FS radius (− / + / slider)", p: "Sets the blur radius for frequency separation. − and + step by 0.5 px up to 10, then larger steps; the slider covers 1–40 px. Default 7 px.", tip: "Typing isn’t used here because Photoshop grabs number keys for brush opacity." },
+    fsPlus: { alias: "fsMinus" }, fsVal: { alias: "fsMinus" }, fsSlider: { alias: "fsMinus" },
+    fsDialog: { n: "Preview", p: "When on (highlighted), FS buttons open Photoshop’s blur dialog with a live preview, starting at your panel radius, so you can judge it on the image. When off, FS runs in one click at the panel radius." },
+    fsGaussian: { n: "FS Gaussian", p: "Frequency separation: splits the image into a Low layer (color and tone) and a High layer (texture), in 8-bit or 16-bit.",
+      steps: ["Leave Preview on and click FS Gaussian.", "In the dialog, raise the radius until pores just disappear, then click OK.", "The panel sets up your tools: Clone Stamp is switched to sample Current Layer, and you land on FS Low with the Mixer Brush (Sample All Layers off).", "On FS Low: blend tones with the Mixer Brush, or lasso, feather and blur lightly.", "On FS High: press S for the Clone Stamp (already on Current Layer) to remove blemishes without smearing tone.", "Cancel in the dialog undoes the whole thing."], makes: "Frequency Separation › FS Low, FS High (Linear Light)", tip: "Works in 8-bit and 16-bit, using the correct Apply Image recipe for each, so the split is lossless in 16-bit. Judge texture at 66.7% zoom or higher: below that, Photoshop previews 16-bit files in 8-bit." },
+    fsMedian: { n: "FS Median", p: "Same as FS Gaussian, but uses a Median filter for the Low layer. It holds edges a little better around features.", steps: ["Same steps as FS Gaussian."] },
+    glow: { n: "Glow", p: "Lifts only the skin’s highlights for a radiant look. Shadows stay where they are.", steps: ["Click Glow.", "Paint along the high points: cheekbones, nose bridge, brow bone, cupid’s bow.", "Keep it subtle with the group opacity."], makes: "Glow › Glow · Highlights (Soft Light)" },
+    grain: { n: "Grain", p: "Adds fine monochrome grain on its own Overlay layer to unify retouched and untouched skin.", tip: "Lower the layer’s opacity to taste; delete it to remove." },
+    addTexture: { n: "Add Texture", p: "Adds fine pore texture back to skin that looks too smooth or plastic. Built as a Smart Object, so every setting stays editable.",
+      steps: ["Click Add Texture (Auto-mask puts it on all face skin; otherwise the mask is hidden).", "Paint white where skin looks over-smoothed.", "To change it later, double-click the smart filters on the layer: Add Noise = strength, Gaussian Blur = pore size, Emboss = depth.", "Fade with the layer opacity (starts at 55%)."], makes: "Skin Texture › Skin Texture · Pores (Overlay, Smart Object)" },
+    removeHairs: { n: "Remove Hairs", p: "Removes peach fuzz, stray facial and body hair, specks and lint, then lays a light grain back so the area doesn’t look blurred.",
+      steps: ["Click Remove Hairs. The mask starts hidden (Auto-mask is skipped on purpose so real skin texture isn’t wiped everywhere).", "Paint white only over fuzz, stray hairs or specks.", "If hairs survive: double-click Dust & Scratches on the layer and raise Radius.", "If skin goes mushy: raise Threshold."], makes: "Remove Hairs › Clean (Smart Object), Grain", tip: "Use a small soft brush and paint in short strokes along the hair." }
+ }},
+ { id: "face", title: "Face & Hair", intro: "Each button builds a named group. It is masked to your selection (or the auto-detected part), otherwise the mask is hidden so you paint it in.", rows: [
+   ["autoMask:Auto-mask: On:sm"],
+   ["faceEyes:Eyes","faceWhites:Whites","faceTeeth:Teeth"],
+   ["faceLips:Lips","faceRedness:Redness","faceTone:Skin Tone"],
+   ["hairDark:Hair Dark","hairBlonde:Hair Blonde"]],
+   items: {
+    autoMask: { n: "Auto-mask", p: "When on and nothing is selected, effects first select their own part with Photoshop’s Select People: Eyes→eyes, Whites→eye whites, Teeth→teeth, Lips→lips, Hair Dark/Blonde→hair, Foundation, De-Blotch, Glow and Add Texture→face skin, Skin Tone→all visible skin, Redness→the reddest areas of the face skin, De-Shine→the shiniest areas of the face skin. Auto-mask edges are softened so they don’t show.", tip: "Works in Photoshop 28. If the part isn’t in the photo (no person, or teeth not showing), you get a hidden mask instead and the status bar says so." },
+    faceEyes: { n: "Eyes", p: "Brightens the eyes, adds a touch of color, takes red out, and adds a detail layer for crispness.", steps: ["Select the eyes (or use Auto-mask), or click and paint over each eye.", "Fade with group opacity if it looks too strong."], makes: "Eyes › Lift, Color, Detail" },
+    faceWhites: { n: "Whites", p: "Removes redness and veins from the whites of the eyes and lifts them slightly.", tip: "Keep the opacity modest. Pure white sclera looks fake." },
+    faceTeeth: { n: "Teeth", p: "Cools slightly, removes yellow, and brightens teeth.", steps: ["Click Teeth with Auto-mask on, or select the teeth first.", "Check gums and lips aren’t affected; paint black on the mask to remove spill."], makes: "Teeth › Cool, Neutralize, Brighten" },
+    faceLips: { n: "Lips", p: "Adds color, contrast and a gloss layer that boosts only the shiny highlights.", steps: ["Click Lips (Auto-mask selects lips without teeth).", "Lower the Gloss layer inside the group for a matte look."], makes: "Lips › Color, Contrast, Gloss" },
+    faceRedness: { n: "Redness", p: "Calms only the areas that are redder than the surrounding skin: blotches, flushed cheeks, irritation. It builds a redness map and uses it as the mask, so even skin tone is left alone.", steps: ["Click Redness. With Auto-mask on it looks within the face skin; with a selection, within your selection; otherwise across the whole image.", "Check the mask: paint black to remove areas, white to add.", "Fade with the group opacity (starts at 85%)."], makes: "Redness › Calm, Magenta (mask = redness map)" },
+    faceTone: { n: "Skin Tone", p: "Adds a Selective Color layer for matching skin tone. With Auto-mask it covers all visible skin (face, neck, chest, arms, hands, legs).", steps: ["Click Skin Tone.", "In Properties, pick Reds and Yellows and adjust Cyan, Magenta, Yellow, Black.", "Without Auto-mask or a selection, paint the mask over skin."], makes: "Skin Tone › Selective Color" },
+    hairDark: { n: "Hair Dark", p: "Adds shine and richness to dark hair: lifts mids, adds saturation and a sheen layer.", steps: ["Click Hair Dark.", "In Brushes, pick Strands or Hair Hi.", "Paint along the direction of the hair where light would fall."], makes: "Hair Shine · Dark › Lift, Richness, Sheen" },
+    hairBlonde: { n: "Hair Blonde", p: "Adds contrast, warmth and detail to light hair.", steps: ["Same steps as Hair Dark."], makes: "Hair Shine · Blonde › Contrast, Warmth, Detail" }
+ }},
+ { id: "brushes", title: "Brushes", intro: "Your own AR brush pack (AR Brushes.abr and AR Clone Brushes.abr, original tips). Load once with import; they appear in Photoshop’s Brushes panel in the groups “AR Beauty Brushes” and “AR Clone Tips”.", head: "importPresets:import", rows: [
+   ["bSkin:Skin:sm","bUniversal:Universal:sm","bDbLocal:D&B S:sm","bDbGlobal:D&B L:sm"],
+   ["bHairStrand:Strands:sm","bHairSingle:Hair 1px:sm","bHairLights:Hair Hi:sm","bPencil:Pencil:sm"],
+   ["bIris:Iris:sm","bFreckle:Freckle:sm","bSparkle:Sparkle:sm","bLashLong:Lash L:sm","bLashShort:Lash S:sm"],
+   ["cHard:Hard:sm","cSoft:Soft:sm","cSkin:Skin:sm","cPencil:Pencil:sm"]],
+   items: {
+    importPresets: { n: "import", p: "Loads the AR brush files that come with the panel into Photoshop in one click. It only runs once so brushes don’t duplicate.", tip: "Shift-click to import again or pick other files." },
+    bSkin: { n: "Skin", p: "AR Skin: a pore-texture tip that rotates and scatters slightly, so masks and D&B over skin keep a natural, non-smooth edge. Pressure controls flow and opacity." },
+    bUniversal: { n: "Universal", p: "AR Universal: soft round with a whisper of grain. Pen pressure controls size and flow. The everyday mask brush." },
+    bDbLocal: { n: "D&B S", p: "AR D&B Local 10px: soft round that loads at 3% flow for pore-by-pore dodge and burn." },
+    bDbGlobal: { n: "D&B L", p: "AR D&B Global 300px: big soft round at 2% flow for broad shaping of light." },
+    bHairStrand: { n: "Strands", p: "AR Hair Strands: a bundle of fine strands of mixed thickness that turns with your stroke. Pen pressure tapers the ends.", tip: "Paint in the hair’s direction with light, flicking strokes. Great inside Hair Dark/Blonde masks or on a new layer to fill gaps." },
+    bHairSingle: { n: "Hair 1px", p: "AR Hair Single 1px: one fine hair with a pressure taper, for flyaways and hairline gaps." },
+    bHairLights: { n: "Hair Hi", p: "AR Hair Highlights: a soft, sparse strand bundle at 30% flow that follows your stroke. Paint shine along the hair." },
+    bPencil: { n: "Pencil", p: "AR Makeup Pencil: oval tip with graphite grain and a pressure taper, for liner, brows and lip lines." },
+    bIris: { n: "Iris", p: "AR Iris: one click stamps a full iris with fibers, crypts, collarette and limbal ring.", steps: ["Make a new layer set to Overlay or Soft Light.", "Size the brush to the iris and click once over it.", "Mask it to the iris, then lower opacity until it blends."] },
+    bFreckle: { n: "Freckle", p: "AR Freckles: scatters irregular freckles of varied size, shape and strength as you brush.", tip: "Use a new layer in Multiply with a warm brown and dab, don’t drag, for a natural spread." },
+    bSparkle: { n: "Sparkle", p: "AR Sparkle: scatters four-point glints with a soft core, for highlighter, glitter or jewelry. Paint white on a new layer." },
+    bLashLong: { n: "Lash L", p: "AR Lash Long: lays curled, tapered lashes that stand up from your stroke.", steps: ["Drag left to right along the upper lash line (right to left flips them for lower lashes).", "Use a new layer; vary size between passes for a natural fan."] },
+    bLashShort: { n: "Lash S", p: "AR Lash Short: shorter lashes for the inner corner, lower lashes or brow hairs. Same drag direction rules as Lash L." },
+    cHard: { n: "Clone · Hard", p: "AR Clone Hard 75%: for crisp edges like hairlines, fabric and backgrounds." },
+    cSoft: { n: "Clone · Soft", p: "AR Clone Soft: soft round with pressure size for general cleanup." },
+    cSkin: { n: "Clone · Skin", p: "AR Clone Skin: clones through the pore-texture tip so repairs keep believable skin texture." },
+    cPencil: { n: "Clone · Pencil", p: "AR Clone Pencil: clone through the pencil tip to clean up makeup edges." }
+ }},
+ { id: "sel", title: "Selections & Masking", intro: "AI people-part selections (Photoshop’s Select People, on everyone in the frame), Select Subject and luminosity selections. People parts, Subject, Lights and Darks all combine with what’s already selected: Shift-click adds, Option-click subtracts, Shift+Option-click keeps only the overlap. Photoshop only finds parts that are visible, so missing parts are skipped and the status bar lists what it looked for.", rows: [
+   ["pSkin:Skin:sm","pBody:Body:sm","pEyes:Eyes:sm","pWhites:Whites:sm"],
+   ["pLips:Lips:sm","pTeeth:Teeth:sm","pHair:Hair:sm","pBrows:Brows:sm"],
+   ["selSubject:Subject","selLights:Lights","selDarks:Darks"],
+   ["selNarrow:Narrow","selInvert:Invert","selMask:Mask"]],
+   items: {
+    pSkin: { n: "Skin", p: "Selects face skin on everyone in the frame, without eyes, brows or mouth.", tip: "Needs Photoshop 26.8+. Follow with any Adjust button and the layer is masked to skin." },
+    pBody: { n: "Body", p: "Selects all visible skin: face, nose, ears, upper body (neck and chest), arms, hands and legs, whichever are in the photo." },
+    pEyes: { n: "Eyes", p: "Selects the eyes." }, pWhites: { n: "Whites", p: "Selects the eye whites (eyes minus irises)." },
+    pLips: { n: "Lips", p: "Selects the lips (mouth minus teeth)." }, pTeeth: { n: "Teeth", p: "Selects the teeth.", tip: "Only works when teeth are showing. With a closed mouth it reports nothing found." },
+    pHair: { n: "Hair", p: "Selects the hair." }, pBrows: { n: "Brows", p: "Selects the eyebrows." },
+    selSubject: { n: "Subject", p: "Photoshop’s Select Subject, with modifiers: Shift adds the subject to your selection, Option subtracts it, Shift+Option keeps only where they overlap.", steps: ["Example: marquee a band across the floor.", "Option-click Subject: the band now excludes the person, ready for a background fix."] },
+    selLights: { n: "Lights", p: "Luminosity selection of the bright areas: the brighter the pixel, the more it’s selected. Shift adds, Option subtracts, Shift+Option intersects with your current selection." },
+    selDarks: { n: "Darks", p: "Luminosity selection of the dark areas. Shift adds, Option subtracts, Shift+Option intersects with your current selection." },
+    selNarrow: { n: "Narrow", p: "Tightens the current selection to brighter tones. Click Lights, then Narrow once or twice for just the highlights." },
+    selInvert: { n: "Invert", p: "Inverts the selection." },
+    selMask: { n: "Mask", p: "Adds a mask from the selection to the selected layer.", tip: "Won’t work on a locked Background layer." }
+ }},
+ { id: "adj", title: "Adjust", intro: "Adds an adjustment layer at the top of the stack. Set it in the Properties panel. If something is selected, the layer is masked to it.", rows: [
+   ["adjCurves:Curves","adjLevels:Levels","adjHueSat:Hue/Sat"],["adjSelective:Sel. Color","adjBalance:Balance","adjVibrance:Vibrance"]],
+   items: {
+    adjCurves: { n: "Curves", p: "Curves adjustment layer for brightness and contrast." },
+    adjLevels: { n: "Levels", p: "Levels adjustment layer for black point, white point and midtones." },
+    adjHueSat: { n: "Hue/Sat", p: "Hue/Saturation adjustment layer." },
+    adjSelective: { n: "Sel. Color", p: "Selective Color adjustment layer, the go-to for skin tone." },
+    adjBalance: { n: "Balance", p: "Color Balance adjustment layer for shadows, midtones and highlights." },
+    adjVibrance: { n: "Vibrance", p: "Vibrance adjustment layer: boosts muted colors more than strong ones." }
+ }},
+ { id: "check", title: "Check Layers", intro: "Temporary viewing layers that help you judge your work. Click once to add, click again to remove. The button outlines in rose while it’s on.", rows: [
+   ["checkAid:Visual Aid","checkSolar:Solar","checkChroma:Chroma"]],
+   items: {
+    checkAid: { n: "Visual Aid", p: "Black & white plus extra contrast, so you see only light and shadow. Use it while dodging and burning." },
+    checkSolar: { n: "Solar", p: "A solarize curve that turns tone changes into bands. Uneven skin shows up as broken or wobbly bands." },
+    checkChroma: { n: "Chroma", p: "Removes brightness and leaves only color, so blotches and oversaturated areas stand out." , tip: "Remove all check layers before you export." }
+ }},
+ { id: "mine", title: "My Actions", intro: "Twelve slots for any action in your Actions panel, so your own recorded actions sit next to the built-in tools.", head: "editSlots:assign", rows: [
+   ["slotA:A:sm","slotB:B:sm","slotC:C:sm","slotD:D:sm","slotE:E:sm","slotF:F:sm"],
+   ["slotG:G:sm","slotH:H:sm","slotI:I:sm","slotJ:J:sm","slotK:K:sm","slotL:L:sm"]],
+   items: {
+    editSlots: { n: "assign", p: "Opens the slot editor.", steps: ["Load the .atn in Photoshop’s Actions panel.", "Click assign, then Refresh if your actions don’t appear.", "Pick an action for each slot, then click Done."], tip: "Slots are remembered between sessions. If an action is renamed or its set isn’t loaded, the status bar tells you which set to load." },
+    slotA: { n: "Slots A–L", p: "Plays the assigned action. Hover to see which one. An empty (dashed) slot opens the editor when clicked.", tip: "If an action opens a pop-up message when it starts, uncheck its Stop step in the Actions panel to skip it." }
+ }},
+ { id: "fin", title: "Finish & Export", intro: "Final sharpening, shape tweaks and output.", rows: [
+   ["sharpen:Sharpen","liquify:Liquify","smartLiquify:Smart Liq."],
+   ["imageSize:Image Size","flatten:Flatten"],
+   [":Web long edge:lbl","webMinus:−:sm","webVal:2500 px:sm","webPlus:+:sm"],
+   ["savePsd:Save PSD","exportWeb:Export Web:acc"]],
+   items: {
+    sharpen: { n: "Sharpen", p: "Adds a High Pass sharpening layer in Overlay at the top.", tip: "Add a mask and paint it off the skin to sharpen only eyes, lips and hair." },
+    liquify: { n: "Liquify", p: "Stamps the image to a new layer and opens Liquify on it.", tip: "Cancel in Liquify removes the stamp too." },
+    smartLiquify: { n: "Smart Liq.", p: "Stamps, converts to a Smart Object, then opens Liquify, so you can double-click the filter later to change it." },
+    imageSize: { n: "Image Size", p: "Opens Photoshop’s Image Size dialog." },
+    flatten: { n: "Flatten", p: "Flattens all layers into one." },
+    webMinus: { n: "Web long edge (− / +)", p: "Sets the long side for Export Web. Steps through 1080, 1350, 1600, 2048, 2500, 3000, 4000 and 5000 px." },
+    webPlus: { alias: "webMinus" }, webVal: { alias: "webMinus" },
+    savePsd: { n: "Save PSD", p: "Saves a copy of the open file as a PSD where you choose. Your working file stays open as is." },
+    exportWeb: { n: "Export Web", p: "Saves a flattened, sRGB, 8-bit JPEG copy at the web long edge. Your working file isn’t changed.", steps: ["Remove any check layers.", "Set the web long edge.", "Click Export Web and choose where to save."] }
+ }},
+ { id: "status", title: "Status Bar", intro: "", rows: [["status:Ready::status"]],
+   items: { status: { n: "Status bar", p: "Bottom of the panel. Hovering any button shows what it does. After a click it shows Done, Cancelled, or the error message.", tip: "If something fails, copy the status text (or the Debug console in UXP Developer Tools) and send it over." } } }
+];
+
+// slots B–L point at A
+for (const k of "BCDEFGHIJKL") S.find(s => s.id === "mine").items["slot" + k] = { alias: "slotA" };
+
+const ref = document.getElementById("ref"), rep = document.getElementById("replica");
+const keyOf = (sec, id) => { const it = sec.items[id]; return it && it.alias ? it.alias : id; };
+const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+// Reference cards
+for (const sec of S) {
+  const el = document.createElement("section");
+  el.className = "grp"; el.id = "sec-" + sec.id;
+  let h = `<h2>${esc(sec.title)}</h2>` + (sec.intro ? `<p class="intro">${esc(sec.intro)}</p>` : "") + `<div class="cards">`;
+  for (const [id, it] of Object.entries(sec.items)) {
+    if (it.alias) continue;
+    const accent = id === "exportWeb" ? " acc" : "";
+    h += `<article class="card" id="c-${id}" data-text="${esc((it.n + " " + it.p + " " + (it.steps || []).join(" ") + " " + (it.tip || "") + " " + sec.title).toLowerCase())}">
+      <h3><span class="chip${accent}">${esc(it.n)}</span></h3><p>${esc(it.p)}</p>`;
+    if (it.steps) h += `<ol>${it.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>`;
+    if (it.makes) h += `<div class="makes">Layers: <code>${esc(it.makes)}</code></div>`;
+    if (it.tip) h += `<p class="tip">${esc(it.tip)}</p>`;
+    h += `</article>`;
+  }
+  el.innerHTML = h + `</div>`;
+  ref.appendChild(el);
+}
+
+// Panel replica
+function go(sec, id) {
+  const k = keyOf(sec, id), card = document.getElementById("c-" + k);
+  if (!card) return;
+  document.getElementById("q").value = ""; filter("");
+  card.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+  card.classList.remove("flash"); void card.offsetWidth; card.classList.add("flash");
+  setTimeout(() => card.classList.remove("flash"), 1600);
+  rep.querySelectorAll("button.cur").forEach(b => b.classList.remove("cur"));
+  rep.querySelectorAll(`[data-k="${k}"]`).forEach(b => b.classList.add("cur"));
+}
+let html = `<div class="rp-row" style="align-items:center;gap:8px;margin-bottom:10px"><div class="mark" style="width:28px;height:28px;font-size:11px">AR</div><div style="font:600 12px var(--display);letter-spacing:3px">BEAUTY</div>
+  <button class="rp-round" style="margin-left:auto" data-k="arrangeBtn" aria-label="Arrange">⇅</button><button class="rp-round rp-i" data-k="openGuide" aria-label="Guide">i</button></div>`;
+rep.innerHTML = html;
+rep.querySelectorAll(".rp-round").forEach((b) => (b.onclick = () => go(S.find((x) => x.id === "panelctl"), b.dataset.k)));
+for (const sec of S) {
+  if (sec.id === "status" || sec.id === "panelctl") continue;
+  const wrap = document.createElement("div");
+  if (!["tools", "layers"].includes(sec.id)) {
+    const hd = document.createElement("div"); hd.className = "rp-sec";
+    hd.innerHTML = `<span>▾ ${esc(sec.title)}</span>`;
+    if (sec.head) { const [hid, hl] = sec.head.split(":"); const b = document.createElement("button"); b.className = "rp-head-link"; b.textContent = hl; b.dataset.k = hid; b.onclick = () => go(sec, hid); hd.appendChild(b); }
+    wrap.appendChild(hd);
+  }
+  for (const row of sec.rows) {
+    const r = document.createElement("div"); r.className = "rp-row";
+    for (const spec of row) {
+      const [id, label, cls] = spec.split(":");
+      if (cls === "lbl") { const s = document.createElement("span"); s.className = "lbl"; s.textContent = label; r.appendChild(s); continue; }
+      if (cls === "slider") { const s = document.createElement("div"); s.className = "slider"; s.dataset.k = keyOf(sec, id); s.onclick = () => go(sec, id); r.appendChild(s); continue; }
+      const b = document.createElement("button");
+      b.textContent = label; b.className = cls || ""; b.dataset.k = keyOf(sec, id);
+      if (["strMed", "fsDialog", "autoMask"].includes(id)) b.style.borderColor = "var(--accent)";
+      b.onclick = () => go(sec, id);
+      r.appendChild(b);
+    }
+    wrap.appendChild(r);
+  }
+  rep.appendChild(wrap);
+}
+const st = document.createElement("div"); st.className = "rp-status"; st.textContent = "Ready"; st.onclick = () => go(S.find(s => s.id === "status"), "status");
+rep.appendChild(st);
+
+// Search
+function filter(q) {
+  q = q.trim().toLowerCase(); let any = false;
+  document.querySelectorAll("section.grp").forEach(sec => {
+    let vis = 0;
+    sec.querySelectorAll(".card").forEach(c => { const m = !q || c.dataset.text.includes(q); c.style.display = m ? "" : "none"; if (m) vis++; });
+    sec.style.display = vis ? "" : "none"; if (vis) any = true;
+  });
+  document.getElementById("empty").style.display = any ? "none" : "block";
+}
+document.getElementById("q").addEventListener("input", e => filter(e.target.value));
+</script>
+</body>
+</html>
