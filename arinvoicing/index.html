@@ -213,6 +213,9 @@ table.t{width:100%;border-collapse:collapse;background:#fff}
 .inv .i-apl div:last-child{flex:.6}
 .inv .i-apl i{flex:1;border-bottom:1px solid #111;height:1px}
 .inv .i-apn{font-size:9px;color:#888;margin:4px 0 0 60px}
+
+.ktag{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:4px;padding:1px 5px;margin-right:7px;vertical-align:1px}
+.ktag.c{background:#e6e3dd;color:#555}.ktag.p{background:#e3ecfd;color:#1d4fbf}
 </style>
 </head>
 <body>
@@ -243,9 +246,10 @@ table.t{width:100%;border-collapse:collapse;background:#fff}
    - Data model is deliberately "flat + UUIDs + defaults everywhere" so it maps 1:1 onto SwiftData/CloudKit later
 */
 'use strict';
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '0.4.0';
 const FEEDBACK_EMAIL = 'adam@adamrindy.com';
 const CHANGELOG = [
+  { v: '0.4.0', date: '2026-11-24', items: ['Contacts are now Companies and People. A person can belong to a company (e.g. a producer at an agency).', 'Bill an invoice to a company or an individual, then add job contacts with roles (Producer, Art Buyer…). Ticked contacts print as “Attn:” under the company.', 'Import handles separate company and people spreadsheets and links people to their company by name.', 'Your existing contacts were split automatically: company records keep the company, and the contact name becomes a linked person.'] },
   { v: '0.3.0', date: '2026-11-24', items: ['Import contacts from CSV, Excel (.xlsx) or Apple Contacts (.vcf): Clients → Import contacts. Columns are matched automatically, you preview before anything is saved, and duplicates are caught.'] },
   { v: '0.2.0', date: '2026-11-24', items: [
     'Preview release for testers: a Try demo data button, a Feedback button and this What\'s new window',
@@ -254,7 +258,7 @@ const CHANGELOG = [
   ] },
   { v: '0.1.0', date: '2026-11-02', items: ['First version: invoices, estimates, usage-license tracker, custom categories, per-invoice currency, PDF/JPEG export, local data folder with daily backups'] },
 ];
-const SCHEMA = 1;
+const SCHEMA = 2;
 
 /* ---------------- utils ---------------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -389,6 +393,7 @@ function normalize(s) {
   s.meta = Object.assign({}, d.meta, s.meta);
   ['clients', 'documents', 'licenses', 'paymentBlocks', 'termsPresets', 'categories', 'units'].forEach(k => { if (!Array.isArray(s[k])) s[k] = d[k]; });
   s.documents.forEach(normDoc);
+  migrateContacts(s);
   s.schema = SCHEMA;
   return s;
 }
@@ -403,14 +408,33 @@ function newDoc(kind) {
     items: [], discountCents: 0, taxPct: 0, taxLabel: 'Sales Tax', advanceCents: 0,
     termsText: preset?.text || '', paymentBlockIds: S.paymentBlocks.filter(b => b.isDefault).map(b => b.id),
     notesToClient: '', internalNotes: '', agency: '', artDirector: '', artBuyer: '', producer: '',
-    show: {}, sentDate: '', paidDate: '', paidCents: 0, fromId: '',
+    show: {}, contacts: [], sentDate: '', paidDate: '', paidCents: 0, fromId: '',
     createdAt: nowISO(), updatedAt: nowISO(),
   };
   if (kind === 'invoice') p.nextInvoiceNumber = Number(p.nextInvoiceNumber) + 1; else p.nextEstimateNumber = Number(p.nextEstimateNumber) + 1;
   return normDoc(d);
 }
+/* v0.4: contacts are Companies or People; a person can belong to a company.
+   Older data (one record with company + contact name) is split into a company and a linked person. */
+function migrateContacts(s) {
+  const add = [];
+  s.clients.forEach(c => {
+    if (c.kind) { c.companyId = c.companyId || ''; c.title = c.title || ''; return; }
+    c.title = c.title || ''; c.companyId = '';
+    if (c.company) {
+      c.kind = 'company';
+      if (c.contactName) {
+        const p = { id: uid(), kind: 'person', company: '', contactName: c.contactName, title: '', companyId: c.id, email: c.email || '', phone: '', address: '', licenseeName: '', notes: '', createdAt: c.createdAt || nowISO() };
+        add.push(p);
+        s.documents.forEach(d => { if (d.clientId === c.id && !(d.contacts || []).length) d.contacts = [{ id: uid(), personId: p.id, role: '', print: true }]; });
+        c.contactName = '';
+      }
+    } else c.kind = 'person';
+  });
+  s.clients.push(...add);
+}
 function normDoc(d) {
-  d.items = d.items || []; d.show = d.show || {}; d.paymentBlockIds = d.paymentBlockIds || [];
+  d.items = d.items || []; d.show = d.show || {}; d.paymentBlockIds = d.paymentBlockIds || []; d.contacts = d.contacts || [];
   d.items.forEach(it => { if (it.duration == null) it.duration = 1; if (it.markupPct == null) it.markupPct = 0; if (it.qty == null) it.qty = 1; });
   return d;
 }
@@ -418,7 +442,7 @@ function newLicense(doc) {
   const L = S.licenseDefaults; const c = clientById(doc?.clientId);
   return {
     id: uid(), docId: doc?.id || '', clientId: doc?.clientId || '',
-    licensee: c ? (c.licenseeName || c.company || c.contactName) : '', licensor: L.licensor || S.profile.businessName, credit: L.credit || '',
+    licensee: defaultLicensee(c), licensor: L.licensor || S.profile.businessName, credit: L.credit || '',
     issueDate: doc?.date || todayISO(), startMode: L.startMode, startDate: doc?.date || todayISO(), firstUseDate: '',
     durationValue: L.durationValue, durationUnit: L.durationUnit, exclusivity: L.exclusivity, region: L.region,
     media: '', imageCount: '', extraTerms: '', internalNotes: '', createdAt: nowISO(), updatedAt: nowISO(),
@@ -491,7 +515,14 @@ const docById = id => S.documents.find(d => d.id === id);
 const unitById = id => S.units.find(u => u.id === id) || { id, label: id || '', plural: id || '', time: false };
 const catById = id => S.categories.find(c => c.id === id);
 const licensesFor = docId => S.licenses.filter(l => l.docId === docId);
-function clientName(c) { return c ? (c.company || c.contactName || 'Unnamed client') : '—'; }
+function clientName(c) { if (!c) return '—'; return (c.kind === 'person' ? (c.contactName || c.company) : (c.company || c.contactName)) || 'Unnamed contact'; }
+const companies = () => S.clients.filter(c => c.kind !== 'person').sort((a, b) => clientName(a).localeCompare(clientName(b)));
+const people = () => S.clients.filter(c => c.kind === 'person').sort((a, b) => clientName(a).localeCompare(clientName(b)));
+const peopleAt = id => people().filter(p => p.companyId === id);
+function personLabel(p) { const co = clientById(p.companyId); return clientName(p) + (co ? ' · ' + clientName(co) : ''); }
+function defaultLicensee(c) { if (!c) return ''; if (c.kind === 'person') { const co = clientById(c.companyId); return co?.licenseeName || (co ? clientName(co) : c.licenseeName || clientName(c)); } return c.licenseeName || clientName(c); }
+const ROLE_PRESETS = ['Producer', 'Art Buyer', 'Art Director', 'Creative Director', 'Photo Editor', 'Brand Manager', 'Marketing Manager', 'Accounts Payable', 'Agent'];
+function docsForContact(c) { return S.documents.filter(d => d.clientId === c.id || (d.contacts || []).some(x => x.personId === c.id)); }
 function lineTotal(it, cur) {
   const u = unitById(it.unit);
   const units = Number(it.qty || 0) * (u.time ? Number(it.duration || 0) : 1);
@@ -567,7 +598,13 @@ function renderInvoice(doc) {
     : L.logoAlign === 'right'
       ? `<div class="i-top"><div class="i-title">${esc(title)}</div>${logo}</div>`
       : `<div class="i-top">${logo}<div class="i-title">${esc(title)}</div></div>`;
-  const clientLines = [c.company, c.contactName && c.company ? 'Attn: ' + c.contactName : (c.company ? '' : c.contactName), c.address].filter(Boolean).join('\n');
+  let clientLines = '';
+  if (c.id) {
+    const co = c.kind === 'person' ? clientById(c.companyId) : null;
+    const top = c.kind === 'person' ? [clientName(c), co ? clientName(co) : '', c.address || co?.address || '', c.email] : [clientName(c), c.address];
+    const attn = (doc.contacts || []).filter(x => x.print !== false).map(x => { const p = clientById(x.personId); if (!p || p.id === c.id) return ''; return ['Attn: ' + clientName(p) + (x.role ? ', ' + x.role : ''), p.email].filter(Boolean).join('\n'); }).filter(Boolean);
+    clientLines = [...top.filter(Boolean), ...attn].join('\n');
+  }
   const metaRows = [
     [doc.kind === 'estimate' ? 'Estimate No' : 'Invoice No', esc(doc.number)],
     [doc.kind === 'estimate' ? 'Estimate Date:' : 'Invoice Date:', fmtDate(doc.date)],
@@ -707,24 +744,36 @@ function confirmModal(title, text, okLabel = 'OK', danger = false) {
     bg.addEventListener('click', e => { const a = e.target.dataset.a; if (a) { bg.remove(); res(a === 'yes'); } });
   });
 }
-function clientModal(client, onSave) {
-  const isNew = !client; const c = client ? clone(client) : { id: uid(), company: '', contactName: '', email: '', phone: '', address: '', licenseeName: '', notes: '', createdAt: nowISO() };
-  const bg = modal(`<h2>${isNew ? 'New client' : 'Edit client'}</h2>
+function clientModal(client, onSave, preset = {}) {
+  const isNew = !client;
+  const c = client ? clone(client) : { id: uid(), kind: preset.kind || 'company', company: '', contactName: '', title: '', companyId: preset.companyId || '', email: '', phone: '', address: '', licenseeName: '', notes: '', createdAt: nowISO() };
+  const bg = modal(`<div id="cm"></div>`);
+  const box = $('#cm', bg);
+  const draw = () => {
+    const P = c.kind === 'person';
+    box.innerHTML = `<h2>${isNew ? (P ? 'New person' : 'New company') : (P ? 'Edit person' : 'Edit company')}</h2>
+    ${isNew ? `<div class="chips" style="margin-bottom:14px"><button class="chipbtn ${!P ? 'on' : ''}" data-kind="company">Company</button><button class="chipbtn ${P ? 'on' : ''}" data-kind="person">Person</button></div>` : ''}
     <div class="grid g2">
-      <label class="f"><span>Company</span><input type="text" name="company" value="${esc(c.company)}" placeholder="e.g. Field & Form Agency"></label>
-      <label class="f"><span>Contact name</span><input type="text" name="contactName" value="${esc(c.contactName)}"></label>
+      ${P ? `<label class="f"><span>Full name</span><input type="text" name="contactName" value="${esc(c.contactName)}" placeholder="e.g. Sylvie Sherman"></label>
+        <label class="f"><span>Title / usual role</span><input type="text" name="title" value="${esc(c.title)}" list="dl-roles" placeholder="e.g. Producer"></label>
+        <label class="f spanall"><span>Company</span><select name="companyId"><option value="">— Independent (no company) —</option>${companies().map(x => opt(x.id, clientName(x), c.companyId)).join('')}</select></label>`
+      : `<label class="f spanall"><span>Company name</span><input type="text" name="company" value="${esc(c.company)}" placeholder="e.g. Field & Form Agency"></label>`}
       <label class="f"><span>Email</span><input type="email" name="email" value="${esc(c.email)}"></label>
       <label class="f"><span>Phone</span><input type="text" name="phone" value="${esc(c.phone)}"></label>
-      <label class="f spanall"><span>Billing address</span><textarea name="address" rows="4">${esc(c.address)}</textarea></label>
-      <label class="f spanall"><span>Default licensee (brand) — used on usage licenses</span><input type="text" name="licenseeName" value="${esc(c.licenseeName)}" placeholder="e.g. the brand, when you bill an agency for it"></label>
+      <label class="f spanall"><span>${P ? 'Address (if you bill them directly)' : 'Billing address'}</span><textarea name="address" rows="3">${esc(c.address)}</textarea></label>
+      ${P ? '' : `<label class="f spanall"><span>Default licensee (brand) for usage licenses</span><input type="text" name="licenseeName" value="${esc(c.licenseeName)}" placeholder="e.g. the brand, when you bill an agency for it"></label>`}
       <label class="f spanall"><span>Private notes</span><textarea name="notes" rows="2">${esc(c.notes)}</textarea></label>
-    </div>
-    <div class="acts"><button class="btn" data-a="cancel">Cancel</button><button class="btn pri" data-a="save">Save client</button></div>`);
+    </div><datalist id="dl-roles">${ROLE_PRESETS.map(r => `<option value="${r}">`).join('')}</datalist>
+    <div class="acts"><button class="btn" data-a="cancel">Cancel</button><button class="btn pri" data-a="save">Save ${P ? 'person' : 'company'}</button></div>`;
+  };
+  const grab = () => $$('[name]', box).forEach(i => c[i.name] = i.value.trim());
+  draw();
   bg.addEventListener('click', e => {
+    const k = e.target.dataset.kind; if (k) { grab(); c.kind = k; draw(); return; }
     const a = e.target.dataset.a; if (!a) return;
     if (a === 'cancel') return bg.remove();
-    $$('[name]', bg).forEach(i => c[i.name] = i.value.trim());
-    if (!c.company && !c.contactName) { toast('Add a company or contact name'); return; }
+    grab();
+    if (c.kind === 'person' ? !c.contactName : !c.company) { toast(c.kind === 'person' ? 'Add a name' : 'Add a company name'); return; }
     if (isNew) S.clients.push(c); else Object.assign(client, c);
     touch(isNew ? c : client); bg.remove(); onSave && onSave(isNew ? c : client);
   });
@@ -732,7 +781,7 @@ function clientModal(client, onSave) {
 
 /* ---------------- router ---------------- */
 let route = { name: 'dashboard', id: '' };
-const ui = { jobsQ: '', jobsKind: 'all', jobsStatus: 'all', jobsYear: 'all', licQ: '', licF: 'all', clientsQ: '', settingsTab: 'business' };
+const ui = { jobsQ: '', jobsKind: 'all', jobsStatus: 'all', jobsYear: 'all', licQ: '', licF: 'all', clientsQ: '', clientsKind: 'all', settingsTab: 'business' };
 function parseRoute() { const h = location.hash.replace(/^#\/?/, '').split('/'); route = { name: h[0] || 'dashboard', id: h[1] || '' }; }
 function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
 window.addEventListener('hashchange', () => { parseRoute(); render(); });
@@ -748,7 +797,7 @@ function renderShell() {
     ${nav('dashboard', 'Dashboard')}
     ${nav('jobs', 'Jobs', overdue ? `<span class="ct warn">${overdue}</span>` : `<span class="ct">${S.documents.length}</span>`)}
     ${nav('licenses', 'Licenses', expiring ? `<span class="ct warn">${expiring}</span>` : `<span class="ct">${S.licenses.length}</span>`)}
-    ${nav('clients', 'Clients', `<span class="ct">${S.clients.length}</span>`)}
+    ${nav('clients', 'Contacts', `<span class="ct">${S.clients.length}</span>`)}
     ${nav('settings', 'Settings')}
     <div class="grow"></div>
     <div class="store" id="store-status"></div>
@@ -829,7 +878,7 @@ function viewJobs() {
     if (ui.jobsYear !== 'all' && !(d.date || '').startsWith(ui.jobsYear)) return false;
     if (!q) return true;
     const c = clientById(d.clientId);
-    return [d.number, d.jobName, d.jobDescription, d.po, clientName(c), c?.contactName, d.agency, d.artBuyer, d.artDirector, d.producer, ...d.items.map(i => i.name)].join(' ').toLowerCase().includes(q);
+    return [d.number, d.jobName, d.jobDescription, d.po, clientName(c), clientName(clientById(c?.companyId)), ...d.contacts.map(x => clientName(clientById(x.personId)) + ' ' + x.role), d.agency, d.artBuyer, d.artDirector, d.producer, ...d.items.map(i => i.name)].join(' ').toLowerCase().includes(q);
   }).sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.number).localeCompare(String(a.number), undefined, { numeric: true }));
   const tot = sumByCurrency(list.filter(d => d.kind === 'invoice' && d.status !== 'void'), d => totals(d).total);
   const sel = (k, opts) => `<select data-ui="${k}">${opts.map(([v, l]) => `<option value="${v}" ${ui[k] === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
@@ -897,23 +946,36 @@ function renewLicense(l) {
   S.licenses.push(nl); touch(d); go('#/doc/' + d.id); toast('Renewal estimate created');
 }
 function viewClients() {
-  const q = ui.clientsQ.toLowerCase();
-  const list = S.clients.filter(c => !q || [c.company, c.contactName, c.email, c.phone, c.address, c.licenseeName].join(' ').toLowerCase().includes(q)).sort((a, b) => clientName(a).localeCompare(clientName(b)));
-  return `<div class="wrap">${folderBanner()}<div class="head"><h1>Clients</h1><span class="sp"></span><button class="btn" data-act="import-contacts">Import contacts…</button><button class="btn pri" data-act="new-client">+ New client</button></div>
-    <div class="filters"><input type="search" placeholder="Search clients…" data-ui="clientsQ" value="${esc(ui.clientsQ)}"></div>
-    <div class="card tablecard">${list.length ? `<table class="t"><thead><tr><th>Client</th><th>Contact</th><th class="num">Jobs</th><th class="num">Invoiced</th><th>Licenses</th></tr></thead><tbody>${list.map(c => {
-      const docs = S.documents.filter(d => d.clientId === c.id); const lic = S.licenses.filter(l => l.clientId === c.id);
-      return `<tr class="click" data-client="${c.id}"><td><b>${esc(clientName(c))}</b>${c.licenseeName ? `<div class="sub">Brand: ${esc(c.licenseeName)}</div>` : ''}</td><td>${esc(c.contactName)}<div class="sub">${esc(c.email)}</div></td><td class="num">${docs.length}</td><td class="num">${curMapText(sumByCurrency(docs.filter(d => d.kind === 'invoice' && d.status !== 'void'), d => totals(d).total))}</td><td>${lic.length ? lic.map(licBadge).join(' ') : '<span class="sub">—</span>'}</td></tr>`;
-    }).join('')}</tbody></table>` : '<div class="empty">No clients yet. <a href="#" data-act="import-contacts">Import your contacts</a> from a spreadsheet, CSV or Apple Contacts.</div>'}</div></div>`;
+  const q = ui.clientsQ.toLowerCase(); const K = ui.clientsKind;
+  const list = S.clients.filter(c => (K === 'all' || (K === 'person') === (c.kind === 'person')) &&
+    (!q || [c.company, c.contactName, c.title, c.email, c.phone, c.address, c.licenseeName, clientName(clientById(c.companyId))].join(' ').toLowerCase().includes(q))).sort((a, b) => clientName(a).localeCompare(clientName(b)));
+  const nCo = S.clients.filter(c => c.kind !== 'person').length, nPe = S.clients.length - nCo;
+  const chip = (k, l) => `<button class="chipbtn ${K === k ? 'on' : ''}" data-ckind="${k}">${l}</button>`;
+  return `<div class="wrap">${folderBanner()}<div class="head"><h1>Contacts</h1><span class="sp"></span><button class="btn" data-act="import-contacts">Import…</button><button class="btn" data-act="new-person">+ Person</button><button class="btn pri" data-act="new-company">+ Company</button></div>
+    <div class="filters"><input type="search" placeholder="Search companies and people…" data-ui="clientsQ" value="${esc(ui.clientsQ)}"><div class="chips">${chip('all', 'All · ' + S.clients.length)}${chip('company', 'Companies · ' + nCo)}${chip('person', 'People · ' + nPe)}</div></div>
+    <div class="card tablecard">${list.length ? `<table class="t"><thead><tr><th>Name</th><th>${K === 'company' ? 'People' : K === 'person' ? 'Company' : 'Company / people'}</th><th>Email / phone</th><th class="num">Jobs</th><th class="num">Billed</th><th>Licenses</th></tr></thead><tbody>${list.map(c => {
+      const P = c.kind === 'person'; const docs = docsForContact(c); const billed = S.documents.filter(d => d.clientId === c.id); const lic = S.licenses.filter(l => l.clientId === c.id);
+      const co = P ? clientById(c.companyId) : null; const ppl = P ? [] : peopleAt(c.id);
+      return `<tr class="click" data-client="${c.id}"><td><span class="ktag ${P ? 'p' : 'c'}">${P ? 'Person' : 'Company'}</span><b>${esc(clientName(c))}</b>${P && c.title ? `<div class="sub">${esc(c.title)}</div>` : ''}${!P && c.licenseeName ? `<div class="sub">Brand: ${esc(c.licenseeName)}</div>` : ''}</td>
+        <td>${P ? (co ? esc(clientName(co)) : '<span class="sub">Independent</span>') : (ppl.length ? esc(ppl.map(clientName).join(', ')) : '<span class="sub">—</span>')}</td>
+        <td>${esc(c.email)}<div class="sub">${esc(c.phone)}</div></td><td class="num">${docs.length}</td><td class="num">${billed.length ? curMapText(sumByCurrency(billed.filter(d => d.kind === 'invoice' && d.status !== 'void'), d => totals(d).total)) : '<span class="sub">—</span>'}</td><td>${lic.length ? lic.map(licBadge).join(' ') : '<span class="sub">—</span>'}</td></tr>`;
+    }).join('')}</tbody></table>` : '<div class="empty">No contacts here yet. <a href="#" data-act="import-contacts">Import your contacts</a> from a spreadsheet, CSV or Apple Contacts.</div>'}</div></div>`;
 }
 function viewClient() {
-  const c = clientById(route.id); if (!c) return '<div class="wrap"><div class="empty">Client not found.</div></div>';
-  const docs = S.documents.filter(d => d.clientId === c.id).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const c = clientById(route.id); if (!c) return '<div class="wrap"><div class="empty">Contact not found.</div></div>';
+  const P = c.kind === 'person'; const co = P ? clientById(c.companyId) : null;
+  const docs = docsForContact(c).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   const lic = S.licenses.filter(l => l.clientId === c.id);
-  return `<div class="wrap"><div class="head"><a class="btn ghost" href="#/clients">← Clients</a><h1>${esc(clientName(c))}</h1><span class="sp"></span>
+  const ppl = P ? [] : peopleAt(c.id);
+  return `<div class="wrap"><div class="head"><a class="btn ghost" href="#/clients">← Contacts</a><span class="ktag ${P ? 'p' : 'c'}" style="font-size:11px">${P ? 'Person' : 'Company'}</span><h1>${esc(clientName(c))}</h1><span class="sp"></span>
     <button class="btn danger" data-delclient="${c.id}">Delete</button><button class="btn" data-editclient="${c.id}">Edit</button><button class="btn pri" data-newfor="${c.id}">New invoice</button></div>
-    <div class="card"><div class="grid g3"><div><div class="kind">Contact</div>${esc(c.contactName) || '—'}<div class="sub">${esc(c.email)} ${esc(c.phone)}</div></div><div><div class="kind">Address</div><div style="white-space:pre-wrap">${esc(c.address) || '—'}</div></div><div><div class="kind">Notes</div><div style="white-space:pre-wrap">${esc(c.notes) || '—'}</div></div></div></div>
-    <div class="card tablecard"><div style="padding:14px 16px 4px"><h3>Jobs</h3></div>${docTable(docs) || '<div class="empty">No jobs yet.</div>'}</div>
+    <div class="card"><div class="grid g3">
+      ${P ? `<div><div class="kind">Company</div>${co ? `<a href="#/client/${co.id}">${esc(clientName(co))}</a>` : 'Independent'}${c.title ? `<div class="sub">${esc(c.title)}</div>` : ''}</div>` : `<div><div class="kind">Brand for licenses</div>${esc(c.licenseeName) || '—'}</div>`}
+      <div><div class="kind">Email / phone</div>${esc(c.email) || '—'}<div class="sub">${esc(c.phone)}</div></div>
+      <div><div class="kind">Address</div><div style="white-space:pre-wrap">${esc(c.address) || '—'}</div></div>
+      ${c.notes ? `<div class="spanall"><div class="kind">Notes</div><div style="white-space:pre-wrap">${esc(c.notes)}</div></div>` : ''}</div></div>
+    ${P ? '' : `<div class="card tablecard"><div style="padding:14px 16px 4px"><h3>People at ${esc(clientName(c))} <span class="sp"></span><button class="btn sm" data-addperson="${c.id}">+ Add person</button></h3></div>${ppl.length ? `<table class="t"><tbody>${ppl.map(p => `<tr class="click" data-client="${p.id}"><td><b>${esc(clientName(p))}</b><div class="sub">${esc(p.title)}</div></td><td>${esc(p.email)}<div class="sub">${esc(p.phone)}</div></td><td class="num">${docsForContact(p).length} jobs</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No people linked yet. Add producers, art buyers and other contacts here.</div>'}</div>`}
+    <div class="card tablecard"><div style="padding:14px 16px 4px"><h3>Jobs ${P ? '(billed to them or listed as a contact)' : ''}</h3></div>${docTable(docs) || '<div class="empty">No jobs yet.</div>'}</div>
     <div class="card tablecard"><div style="padding:14px 16px 4px"><h3>Licenses</h3></div>${licTable(lic) || '<div class="empty">No licenses.</div>'}</div></div>`;
 }
 
@@ -950,13 +1012,17 @@ function editorForm(d) {
     ${isEst ? '' : `<label class="f"><span>Paid on</span><input type="date" data-f="paidDate" value="${esc(d.paidDate)}"></label>`}
   </div></div>
 
-  <div class="card"><h3>Client <span class="sp"></span><button class="btn sm" data-act="new-client-doc">+ New client</button></h3>
-    <div class="row"><select data-f="clientId" style="flex:1"><option value="">— Select client —</option>${[...S.clients].sort((a, b) => clientName(a).localeCompare(clientName(b))).map(c => opt(c.id, clientName(c) + (c.contactName && c.company ? ' — ' + c.contactName : ''), d.clientId)).join('')}</select>
+  <div class="card"><h3>Bill to <span class="sp"></span><button class="btn sm" data-act="new-company-doc">+ Company</button><button class="btn sm" data-act="new-person-doc">+ Person</button></h3>
+    <div class="row"><select data-f="clientId" style="flex:1"><option value="">— Select a company or person —</option>
+      <optgroup label="Companies">${companies().map(c => opt(c.id, clientName(c), d.clientId)).join('')}</optgroup>
+      <optgroup label="People">${people().map(c => opt(c.id, personLabel(c), d.clientId)).join('')}</optgroup></select>
     ${d.clientId ? `<button class="btn sm" data-act="edit-client-doc">Edit</button>` : ''}</div>
-    <div class="grid g2" style="margin-top:10px">
-      <label class="f"><span>Agency (private)</span><input type="text" data-f="agency" value="${esc(d.agency)}"></label>
-      <label class="f"><span>Art buyer / producer (private)</span><input type="text" data-f="artBuyer" value="${esc(d.artBuyer)}"></label>
-    </div></div>
+    <div class="catrow" style="margin-top:14px"><span>Job contacts</span><span style="text-transform:none;letter-spacing:0;font-weight:400">Ticked contacts print as “Attn:” on the ${d.kind}</span></div>
+    <div id="jobcontacts">${contactRows(d)}</div>
+    <div class="row"><button class="btn sm" data-act="add-contact">+ Add contact</button><button class="btn sm" data-act="new-contact-person">+ New person</button></div>
+    <datalist id="dl-roles">${ROLE_PRESETS.map(r => `<option value="${r}">`).join('')}</datalist>
+    <div class="grid g2" style="margin-top:12px"><label class="f"><span>Agency (private)</span><input type="text" data-f="agency" value="${esc(d.agency)}"></label></div>
+  </div>
 
   <div class="card"><h3>Job</h3><div class="grid">
     <label class="f"><span>Job name</span><input type="text" data-f="jobName" value="${esc(d.jobName)}" placeholder="e.g. PO#1234 - BRAND SPRING SHOOT"></label>
@@ -993,6 +1059,16 @@ function editorForm(d) {
   <div class="card"><h3>Show on this ${d.kind}</h3><div class="grid g3">
     ${showTog('job', 'Job name')}${showTog('description', 'Job description')}${showTog('license', 'Usage license')}${showTog('terms', 'Terms')}${showTog('payment', 'Payment info')}${showTog('notes', 'Notes')}${isEst ? showTog('approval', 'Client approval line') : ''}${showTog('signature', 'Signature')}
   </div><div class="hint" style="margin-top:8px">Order, labels, fonts and paper size live in Settings → Invoice layout.</div></div>`;
+}
+function contactRows(d) {
+  if (!d.contacts.length) return '<div class="hint" style="margin-bottom:8px">No job contacts. Add the producer, art buyer or whoever you deal with.</div>';
+  const bill = clientById(d.clientId); const coId = bill ? (bill.kind === 'person' ? bill.companyId : bill.id) : '';
+  const ppl = people(); const here = ppl.filter(p => coId && p.companyId === coId), other = ppl.filter(p => !(coId && p.companyId === coId));
+  return d.contacts.map(x => `<div class="li" data-ct="${x.id}" style="padding:7px 9px"><div class="row" style="flex-wrap:nowrap">
+    <select data-cc="personId" style="flex:1.4"><option value="">— Pick a person —</option>${here.length ? `<optgroup label="At ${esc(clientName(clientById(coId)))}">${here.map(p => opt(p.id, clientName(p) + (p.title ? ' — ' + p.title : ''), x.personId)).join('')}</optgroup>` : ''}<optgroup label="${here.length ? 'Everyone else' : 'People'}">${other.map(p => opt(p.id, personLabel(p), x.personId)).join('')}</optgroup></select>
+    <input type="text" data-cc="role" value="${esc(x.role)}" placeholder="Role on this job" list="dl-roles" style="flex:1">
+    <label class="chk" style="font-size:12px;white-space:nowrap"><input type="checkbox" data-cc="print" ${x.print !== false ? 'checked' : ''}> Print</label>
+    <button class="x" data-delct="${x.id}" title="Remove">✕</button></div></div>`).join('');
 }
 function itemsHTML(d) {
   if (!d.items.length) return '<div class="hint" style="margin-bottom:8px">No line items yet.</div>';
@@ -1096,7 +1172,11 @@ function mountDoc() {
       if (k === 'termsDays' || k === 'date') { if (d.kind === 'invoice') { d.dueDate = addDays(d.date, d.termsDays); const dd = $('[data-f="dueDate"]', left); if (dd) dd.value = d.dueDate; } }
       if (k === 'status' && v === 'paid') { if (!d.paidDate) { d.paidDate = todayISO(); const pd = $('[data-f="paidDate"]', left); if (pd) pd.value = d.paidDate; } if (!d.paidCents) { d.paidCents = totals(d).balance; const pc = $('[data-f="paidCents"]', left); if (pc) pc.value = moneyInput(d.paidCents); } }
       if (k === 'status' && v === 'sent' && !d.sentDate) { d.sentDate = todayISO(); const sd = $('[data-f="sentDate"]', left); if (sd) sd.value = d.sentDate; }
-      if (k === 'clientId') { licensesFor(d.id).forEach(l => { l.clientId = v; if (!l.licensee) { const c = clientById(v); l.licensee = c ? (c.licenseeName || c.company || c.contactName) : ''; } }); }
+      if (k === 'clientId') {
+        const c = clientById(v);
+        licensesFor(d.id).forEach(l => { l.clientId = v; if (!l.licensee) l.licensee = defaultLicensee(c); });
+        if (c && c.kind !== 'person' && !d.contacts.length) { const ppl = peopleAt(c.id); if (ppl.length === 1) d.contacts.push({ id: uid(), personId: ppl[0].id, role: ppl[0].title || '', print: true }); }
+      }
       touch(d);
       if (e.type === 'change' && ['currency', 'status', 'clientId', 'number'].includes(k)) { const sc = left.scrollTop; left.innerHTML = editorForm(d); left.scrollTop = sc; renderShell(); }
       else if (['discountCents', 'taxPct', 'advanceCents', 'taxLabel'].includes(k)) refreshTotals();
@@ -1118,6 +1198,12 @@ function mountDoc() {
       const tt = $(`[data-tot="${it.id}"]`, left); if (tt) tt.textContent = money(lineTotal(it, d.currency), d.currency);
       refreshTotals(); refreshPreview(); return;
     }
+    if (el.dataset.cc) {
+      const x = d.contacts.find(y => y.id === el.closest('[data-ct]').dataset.ct); const k = el.dataset.cc;
+      x[k] = el.type === 'checkbox' ? el.checked : el.value;
+      if (k === 'personId' && !x.role) { const p = clientById(x.personId); if (p?.title) { x.role = p.title; const r = $('[data-cc="role"]', el.closest('[data-ct]')); if (r) r.value = x.role; } }
+      touch(d); refreshPreview(); return;
+    }
     if (el.dataset.show) { d.show[el.dataset.show] = el.checked; touch(d); refreshPreview(); return; }
     if (el.dataset.pay) { const id = el.dataset.pay; d.paymentBlockIds = el.checked ? [...new Set([...d.paymentBlockIds, id])] : d.paymentBlockIds.filter(x => x !== id); touch(d); refreshPreview(); return; }
     if (el.id === 'quickadd' && el.value) {
@@ -1134,12 +1220,22 @@ function mountDoc() {
   left.addEventListener('click', async e => {
     const t = e.target;
     const pc = t.closest('[data-preset]'); if (pc) { presetChip(pc); return; }
+    if (t.dataset.delct) { d.contacts = d.contacts.filter(x => x.id !== t.dataset.delct); touch(d); $('#jobcontacts').innerHTML = contactRows(d); refreshPreview(); return; }
     if (t.dataset.delitem) { d.items = d.items.filter(i => i.id !== t.dataset.delitem); touch(d); reItems(); return; }
     if (t.dataset.dellic) { S.licenses = S.licenses.filter(l => l.id !== t.dataset.dellic); touch(d); const sc = left.scrollTop; left.innerHTML = editorForm(d); left.scrollTop = sc; refreshPreview(); renderShell(); return; }
     const a = t.dataset.act; if (!a) return;
     if (a === 'add-line') { const c = S.categories[0]; d.items.push({ id: uid(), categoryId: c?.id || '', categoryName: c?.name || 'Fees', name: '', note: '', qty: 1, rateCents: 0, unit: 'day', duration: 1, markupPct: 0, taxable: false }); touch(d); reItems(); }
     if (a === 'add-lic') { S.licenses.push(newLicense(d)); touch(d); const sc = left.scrollTop; left.innerHTML = editorForm(d); left.scrollTop = sc; refreshPreview(); renderShell(); }
-    if (a === 'new-client-doc') clientModal(null, c => { d.clientId = c.id; licensesFor(d.id).forEach(l => { l.clientId = c.id; if (!l.licensee) l.licensee = c.licenseeName || c.company || c.contactName; }); touch(d); render(); });
+    if (a === 'new-company-doc' || a === 'new-person-doc') clientModal(null, c => { d.clientId = c.id; licensesFor(d.id).forEach(l => { l.clientId = c.id; if (!l.licensee) l.licensee = defaultLicensee(c); }); touch(d); render(); }, { kind: a === 'new-person-doc' ? 'person' : 'company' });
+    if (a === 'add-contact') {
+      const bill = clientById(d.clientId); const coId = bill ? (bill.kind === 'person' ? bill.companyId : bill.id) : '';
+      const used = new Set(d.contacts.map(x => x.personId)); const next = peopleAt(coId).find(p => !used.has(p.id) && p.id !== d.clientId);
+      d.contacts.push({ id: uid(), personId: next?.id || '', role: next?.title || '', print: true }); touch(d); $('#jobcontacts').innerHTML = contactRows(d); refreshPreview();
+    }
+    if (a === 'new-contact-person') {
+      const bill = clientById(d.clientId); const coId = bill ? (bill.kind === 'person' ? bill.companyId : bill.id) : '';
+      clientModal(null, p => { d.contacts.push({ id: uid(), personId: p.id, role: p.title || '', print: true }); touch(d); render(); }, { kind: 'person', companyId: coId });
+    }
     if (a === 'edit-client-doc') clientModal(clientById(d.clientId), () => render());
     if (a === 'dup') duplicateDoc(d);
     if (a === 'convert') convertToInvoice(d);
@@ -1356,7 +1452,7 @@ async function reconnect() {
 
 /* ---------------- global clicks ---------------- */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-act],[data-open],[data-openlic],[data-renew],[data-client],[data-licf],[data-stab],[data-editclient],[data-delclient],[data-newfor],[data-move],[data-catmove],[data-delcat],[data-addci],[data-delci],[data-delunit],[data-pbmove],[data-delpb],[data-deltp],[data-clearimg]');
+  const t = e.target.closest('[data-act],[data-open],[data-openlic],[data-renew],[data-client],[data-licf],[data-stab],[data-editclient],[data-ckind],[data-addperson],[data-delclient],[data-newfor],[data-move],[data-catmove],[data-delcat],[data-addci],[data-delci],[data-delunit],[data-pbmove],[data-delpb],[data-deltp],[data-clearimg]');
   if (!t) return;
   if (t.closest('#ed-left') && !['new-invoice', 'new-estimate'].includes(t.dataset.act)) return; // editor handles its own
   const ds = t.dataset;
@@ -1365,12 +1461,19 @@ document.addEventListener('click', async e => {
   if (ds.openlic) return licenseModal(S.licenses.find(x => x.id === ds.openlic));
   if (ds.client) return go('#/client/' + ds.client);
   if (ds.licf) { ui.licF = ds.licf; return render(); }
+  if (ds.ckind) { ui.clientsKind = ds.ckind; return render(); }
+  if (ds.addperson) return clientModal(null, () => render(), { kind: 'person', companyId: ds.addperson });
   if (ds.stab) { ui.settingsTab = ds.stab; return render(); }
   if (ds.editclient) return clientModal(clientById(ds.editclient), () => render());
   if (ds.delclient) {
-    const n = S.documents.filter(d => d.clientId === ds.delclient).length;
-    if (n) return toast(`This client has ${n} job(s). Reassign or delete those first.`, 3500);
-    if (await confirmModal('Delete client?', '', 'Delete', true)) { S.clients = S.clients.filter(c => c.id !== ds.delclient); touch(); go('#/clients'); } return;
+    const c = clientById(ds.delclient); const billed = S.documents.filter(d => d.clientId === c.id).length;
+    if (billed) return toast(`${clientName(c)} is billed on ${billed} job(s). Change those first.`, 3500);
+    const asContact = S.documents.filter(d => d.contacts.some(x => x.personId === c.id)).length; const ppl = peopleAt(c.id).length;
+    const msg = [asContact ? `They'll be removed as a contact from ${asContact} job(s).` : '', ppl ? `${ppl} linked people stay in Contacts as independent.` : ''].filter(Boolean).join(' ');
+    if (await confirmModal(`Delete ${clientName(c)}?`, msg, 'Delete', true)) {
+      S.documents.forEach(d => d.contacts = d.contacts.filter(x => x.personId !== c.id)); S.clients.forEach(p => { if (p.companyId === c.id) p.companyId = ''; });
+      S.clients = S.clients.filter(x => x !== c); touch(); go('#/clients');
+    } return;
   }
   if (ds.newfor) { const d = newDoc('invoice'); d.clientId = ds.newfor; S.documents.push(d); touch(d); return go('#/doc/' + d.id); }
   if (ds.move) { const [i, dir] = ds.move.split('|').map(Number); move(S.layout.order, i, dir); touch(); return render(); }
@@ -1386,7 +1489,7 @@ document.addEventListener('click', async e => {
   const a = ds.act; e.preventDefault();
   if (a === 'new-invoice' || a === 'new-estimate') { const d = newDoc(a === 'new-invoice' ? 'invoice' : 'estimate'); S.documents.push(d); touch(d); go('#/doc/' + d.id); }
   if (a === 'import-contacts') importContactsModal();
-  if (a === 'new-client') clientModal(null, c => go('#/client/' + c.id));
+  if (a === 'new-company' || a === 'new-person' || a === 'new-client') clientModal(null, c => go('#/client/' + c.id), { kind: a === 'new-person' ? 'person' : 'company' });
   if (a === 'pdf' && curDoc) exportPDF(curDoc);
   if (a === 'jpeg' && curDoc) exportJPEG(curDoc);
   if (a === 'choose-folder') chooseFolder();
@@ -1423,32 +1526,44 @@ function demoState() {
   const pay = { id: uid(), title: 'BANK TRANSFER (DEMO)', body: 'Name on Account: Northlight Studio\nAccount Number: 000000000 (demo)\nRouting Number: 000000000 (demo)\nBank Name: Example Bank', isDefault: true };
   const pay2 = { id: uid(), title: '', body: 'ZELLE / PAYPAL\npay@northlight.example', isDefault: true };
   st.paymentBlocks = [pay, pay2];
-  const C = (company, contactName, email, address, licenseeName = '') => { const c = { id: uid(), company, contactName, email, phone: '', address, licenseeName, notes: '', createdAt: nowISO() }; st.clients.push(c); return c; };
-  const lumen = C('Lumen Beauty Co.', 'Jordan Lee', 'jordan@lumen.example', '200 Sample Street\nNew York, NY 10000\nUnited States', 'LUMEN BEAUTY');
-  const field = C('Field & Form Agency', 'Sam Rivera', 'sam@fieldform.example', '45 Demo Road\nBrooklyn, NY 11200\nUnited States', 'SALTWATER SKIN');
-  const orbit = C('Orbit Coffee Roasters GmbH', 'Mia Kraus', 'mia@orbit.example', 'Beispielstraße 12\n10115 Berlin\nGermany', 'ORBIT COFFEE');
+  const C = (company, email, address, licenseeName = '') => { const c = { id: uid(), kind: 'company', company, contactName: '', title: '', companyId: '', email, phone: '', address, licenseeName, notes: '', createdAt: nowISO() }; st.clients.push(c); return c; };
+  const Pn = (name, title, co, email, phone = '', address = '') => { const p = { id: uid(), kind: 'person', company: '', contactName: name, title, companyId: co ? co.id : '', email, phone, address, licenseeName: '', notes: '', createdAt: nowISO() }; st.clients.push(p); return p; };
+  const lumen = C('Lumen Beauty Co.', 'ap@lumen.example', '200 Sample Street\nNew York, NY 10000\nUnited States', 'LUMEN BEAUTY');
+  const field = C('Field & Form Agency', 'billing@fieldform.example', '45 Demo Road\nBrooklyn, NY 11200\nUnited States', 'SALTWATER SKIN');
+  const orbit = C('Orbit Coffee Roasters GmbH', 'office@orbit.example', 'Beispielstraße 12\n10115 Berlin\nGermany', 'ORBIT COFFEE');
+  const jordan = Pn('Jordan Lee', 'Art Buyer', lumen, 'jordan@lumen.example', '+1 555 010 0142');
+  const casey = Pn('Casey Morgan', 'Producer', lumen, 'casey@lumen.example');
+  const sam = Pn('Sam Rivera', 'Producer', field, 'sam@fieldform.example', '+1 555 010 0177');
+  Pn('Riley Chen', 'Art Director', field, 'riley@fieldform.example');
+  const mia = Pn('Mia Kraus', 'Brand Manager', orbit, 'mia@orbit.example');
+  const dana = Pn('Dana Whitfield', 'Author', null, 'dana@whitfield.example', '+1 555 010 0123', '12 Example Lane\nPasadena, CA 91100\nUnited States');
+  const ct = (p, role, print = true) => ({ id: uid(), personId: p.id, role, print });
   const cat = n => st.categories.find(c => c.name === n);
   const line = (catName, name, qty, rate, unit = 'day', duration = 1, markupPct = 0, note = '') => ({ id: uid(), categoryId: cat(catName).id, categoryName: catName, name, note, qty, rateCents: rate * 100, unit, duration, markupPct, taxable: false });
   const D = (kind, client, o) => { const doc = newDoc(kind); Object.assign(doc, { clientId: client.id }, o); if (kind === 'invoice') doc.dueDate = addDays(doc.date, doc.termsDays); st.documents.push(doc); return doc; };
   const L = (doc, o) => { const l = newLicense(doc); Object.assign(l, o); st.licenses.push(l); return l; };
-  const old = D('invoice', lumen, { number: '2031', date: m(-14), status: 'paid', paidDate: addDays(m(-14), 21), jobName: 'Lumen Spring Lip Launch', jobDescription: 'Studio still life for the spring lip collection. 12 final images.', items: [line('Fees', 'Photographers Fee', 1, 4500), line('Post-Production', 'Retouching', 12, 120, 'image')], sentDate: m(-14) });
+  const old = D('invoice', lumen, { contacts: [ct(jordan, 'Art Buyer')], number: '2031', date: m(-14), status: 'paid', paidDate: addDays(m(-14), 21), jobName: 'Lumen Spring Lip Launch', jobDescription: 'Studio still life for the spring lip collection. 12 final images.', items: [line('Fees', 'Photographers Fee', 1, 4500), line('Post-Production', 'Retouching', 12, 120, 'image')], sentDate: m(-14) });
   old.paidCents = totals(old).total;
   L(old, { issueDate: old.date, startMode: 'date', startDate: old.date, durationValue: 1, durationUnit: 'years', media: 'Brand Website; Organic Social Media', region: 'United States', exclusivity: 'Non-exclusive', imageCount: '12' });
-  const paid = D('invoice', lumen, { number: '2038', date: d(-62), status: 'paid', paidDate: d(-35), po: 'LB-7781', jobName: 'Lumen Holiday Gift Sets', jobDescription: 'One studio day photographing the holiday gift sets on seamless and in styled vignettes. Includes licensing for 20 final images.', sentDate: d(-62),
+  const paid = D('invoice', lumen, { contacts: [ct(casey, 'Producer'), ct(jordan, 'Art Buyer', false)], number: '2038', date: d(-62), status: 'paid', paidDate: d(-35), po: 'LB-7781', jobName: 'Lumen Holiday Gift Sets', jobDescription: 'One studio day photographing the holiday gift sets on seamless and in styled vignettes. Includes licensing for 20 final images.', sentDate: d(-62),
     items: [line('Fees', 'Photographers Fee', 1, 6000), line('Fees', 'Prelight / Tech Day', 1, 1500), line('Crew', '1st Assistant', 1, 750, 'day', 2), line('Crew', 'Digital Tech', 1, 950), line('Crew', 'Prop Stylist', 1, 900), line('Studio & Equipment', 'Studio Rental', 1, 1200), line('Expenses', 'Props', 1, 640, 'flat', 1, 20, 'Receipts available on request'), line('Post-Production', 'Retouching', 20, 125, 'image')] });
   paid.paidCents = totals(paid).total;
   L(paid, { issueDate: paid.date, startMode: 'date', startDate: d(-50), durationValue: 1, durationUnit: 'years', media: 'Brand Website; E-Commerce / PDPs; Organic Social Media; Paid Social Media', region: 'Worldwide', exclusivity: 'Exclusive', imageCount: '20' });
-  const overdue = D('invoice', field, { number: '2039', date: d(-45), status: 'sent', sentDate: d(-45), po: '5521', agency: 'Field & Form', jobName: 'PO#5521 - SALTWATER SKIN SUMMER', jobDescription: 'Beauty portraits and product for the Saltwater Skin summer campaign. Flat fee, all-inclusive.',
+  const overdue = D('invoice', field, { contacts: [ct(sam, 'Producer')], number: '2039', date: d(-45), status: 'sent', sentDate: d(-45), po: '5521', agency: 'Field & Form', jobName: 'PO#5521 - SALTWATER SKIN SUMMER', jobDescription: 'Beauty portraits and product for the Saltwater Skin summer campaign. Flat fee, all-inclusive.',
     items: [line('Fees', 'Photographers Fee', 1, 9000, 'flat'), line('Talent', 'Model', 2, 1500, 'day', 1, 20, 'Rate + 20% agency fee'), line('Crew', 'Hair & Makeup', 1, 1100)] });
   L(overdue, { licensee: 'SALTWATER SKIN', issueDate: d(-40), startMode: 'firstUse', durationValue: 1, durationUnit: 'years', media: 'Organic Social Media; Paid Social Media; Retailer Websites And E-Commerce PDPs; In-Store POS', region: 'North America', exclusivity: 'Exclusive', imageCount: '15' });
-  const eur = D('invoice', orbit, { number: '2040', date: d(-6), status: 'sent', sentDate: d(-6), currency: 'EUR', termsDays: 30, jobName: 'Orbit Coffee Packaging Refresh', jobDescription: 'Packshots of the new bag designs, plus lifestyle images in the roastery.',
+  const eur = D('invoice', orbit, { contacts: [ct(mia, 'Brand Manager')], number: '2040', date: d(-6), status: 'sent', sentDate: d(-6), currency: 'EUR', termsDays: 30, jobName: 'Orbit Coffee Packaging Refresh', jobDescription: 'Packshots of the new bag designs, plus lifestyle images in the roastery.',
     items: [line('Fees', 'Photographers Fee', 1, 3800), line('Fees', 'Travel Day', 1, 900), line('Expenses', 'Mileage', 120, 1, 'mile')], taxPct: 19, taxLabel: 'VAT' });
   eur.items.forEach(i => i.taxable = true);
   L(eur, { issueDate: eur.date, startMode: 'date', startDate: m(-11), durationValue: 1, durationUnit: 'years', media: 'Packaging; Brand Website; Print Advertising', region: 'Europe', exclusivity: 'Exclusive within category', imageCount: '8' });
-  const est = D('estimate', lumen, { number: '309', date: d(-2), status: 'sent', sentDate: d(-2), jobName: 'Lumen Valentine’s Campaign', jobDescription: 'Two-day studio shoot: beauty close-ups day one, product still life day two. Estimate includes licensing for 30 images.',
+  const est = D('estimate', lumen, { contacts: [ct(casey, 'Producer'), ct(jordan, 'Art Buyer')], number: '309', date: d(-2), status: 'sent', sentDate: d(-2), jobName: 'Lumen Valentine’s Campaign', jobDescription: 'Two-day studio shoot: beauty close-ups day one, product still life day two. Estimate includes licensing for 30 images.',
     termsText: 'Estimate is valid for 14 days. A signed estimate and 50% of the total are due upon booking.',
     items: [line('Fees', 'Photographers Fee', 1, 6000, 'day', 2), line('Crew', '1st Assistant', 1, 750, 'day', 2), line('Crew', 'Digital Tech', 1, 950, 'day', 2), line('Crew', 'Hair & Makeup', 1, 1100), line('Talent', 'Model', 1, 2000, 'day', 1, 20, 'Rate + 20% agency fee'), line('Studio & Equipment', 'Studio Rental', 1, 1200, 'day', 2), line('Expenses', 'Catering', 1, 450, 'day', 2)] });
   L(est, { issueDate: est.date, startMode: 'firstUse', durationValue: 2, durationUnit: 'years', media: 'Organic Social Media; Paid Social Media; Brand Website; E-Commerce / PDPs; Email Marketing', region: 'Worldwide', exclusivity: 'Exclusive', imageCount: '30' });
+  const port = D('invoice', dana, { number: '2037', date: d(-80), status: 'paid', sentDate: d(-80), paidDate: d(-70), jobName: 'Author Portraits', jobDescription: 'Half-day portrait session for book jacket and press. Includes 5 retouched images.', termsDays: 14,
+    items: [line('Fees', 'Photographers Fee', 1, 1500, 'half-day'), line('Post-Production', 'Retouching', 5, 75, 'image')] });
+  port.paidCents = totals(port).total;
+  L(port, { licensee: 'Dana Whitfield', issueDate: port.date, startMode: 'date', startDate: port.date, durationUnit: 'perpetual', media: 'Book jacket; Press and publicity; Personal website', region: 'Worldwide', exclusivity: 'Non-exclusive', imageCount: '5' });
   st.meta.demo = true;
   S = prev; return st;
 }
@@ -1632,33 +1747,51 @@ function rowToClient(row, map) {
     const cityLine = [g('city'), [g('state'), g('zip')].filter(Boolean).join(' ')].filter(Boolean).join(', ');
     address = [g('street'), g('street2'), cityLine, g('country')].filter(Boolean).join('\n');
   }
-  const notes = [g('title') && 'Title: ' + g('title'), g('notes')].filter(Boolean).join('\n');
-  return { company: g('company'), contactName: name, email: g('email'), phone: g('phone'), address, notes };
+  return { company: g('company'), contactName: name, title: g('title'), email: g('email'), phone: g('phone'), address, notes: g('notes') };
 }
-function findDuplicate(c) {
-  const em = c.email.toLowerCase();
-  return S.clients.find(x => (em && (x.email || '').toLowerCase() === em) ||
-    (!em && (x.company || '').toLowerCase() === c.company.toLowerCase() && (x.contactName || '').toLowerCase() === c.contactName.toLowerCase()));
+const keyName = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\b(llc|inc|ltd|gmbh|co|corp|corporation|company)\b/g, '').trim();
+/* Turn rows into a plan: which companies and people to create, link or skip. mode: auto | companies | people */
+function planImport(rows, map, mode) {
+  const coIndex = new Map(); S.clients.filter(c => c.kind !== 'person').forEach(c => coIndex.set(keyName(c.company), { existing: c }));
+  const planned = []; const seen = new Set(); let empty = 0;
+  const companyFor = (name, extra) => {
+    const k = keyName(name); if (!k) return null;
+    if (coIndex.has(k)) return coIndex.get(k);
+    const e = { create: { kind: 'company', company: name, contactName: '', title: '', companyId: '', email: '', phone: '', address: extra.address || '', licenseeName: '', notes: '' } };
+    coIndex.set(k, e); planned.push({ type: 'company', status: 'new', ref: e, data: e.create }); return e;
+  };
+  for (const r of rows) {
+    const c = rowToClient(r, map);
+    const asPerson = mode === 'people' || (mode === 'auto' && c.contactName);
+    if (asPerson) {
+      if (!c.contactName) { empty++; continue; }
+      const key = 'p|' + (c.email.toLowerCase() || (c.contactName + '|' + c.company).toLowerCase()); if (seen.has(key)) { empty++; continue; } seen.add(key);
+      const co = c.company ? companyFor(c.company, { address: c.address }) : null;
+      const coExisting = co?.existing;
+      const dup = S.clients.find(x => x.kind === 'person' && ((c.email && (x.email || '').toLowerCase() === c.email.toLowerCase()) || (keyName(x.contactName) === keyName(c.contactName) && (!coExisting || x.companyId === coExisting.id))));
+      const data = { kind: 'person', company: '', contactName: c.contactName, title: c.title, companyId: '', email: c.email, phone: c.phone, address: co && co.create ? '' : c.address, licenseeName: '', notes: c.notes };
+      planned.push({ type: 'person', status: dup ? 'dup' : 'new', dupOf: dup, data, coRef: co, coName: c.company });
+    } else {
+      if (!c.company) { empty++; continue; }
+      const k = keyName(c.company); if (seen.has('c|' + k)) { empty++; continue; } seen.add('c|' + k);
+      const ex = coIndex.get(k);
+      const data = { kind: 'company', company: c.company, contactName: '', title: '', companyId: '', email: c.email, phone: c.phone, address: c.address, licenseeName: '', notes: [c.contactName && 'Contact: ' + c.contactName, c.notes].filter(Boolean).join('\n') };
+      if (ex?.existing) planned.push({ type: 'company', status: 'dup', dupOf: ex.existing, data });
+      else if (ex?.create) { Object.keys(data).forEach(f => { if (!ex.create[f] && data[f]) ex.create[f] = data[f]; }); }
+      else { const e = { create: data }; coIndex.set(k, e); planned.push({ type: 'company', status: 'new', ref: e, data }); }
+    }
+  }
+  return { planned, empty };
 }
 function importContactsModal() {
-  const st = { sheets: null, sheet: 0, header: true, map: {}, dupMode: 'skip', fileName: '' };
+  const st = { sheets: null, sheet: 0, header: true, map: {}, dupMode: 'skip', fileName: '', mode: 'auto' };
   const bg = modal(`<h2>Import contacts</h2><div id="imp"></div>`, { wide: true });
   const box = $('#imp', bg);
   const rowsAll = () => st.sheets ? st.sheets[st.sheet].rows : [];
   const headers = () => { const r = rowsAll(); const w = Math.max(0, ...r.map(x => x.length)); return st.header ? Array.from({ length: w }, (_, i) => r[0]?.[i] || `Column ${i + 1}`) : Array.from({ length: w }, (_, i) => `Column ${i + 1}`); };
   const dataRows = () => st.header ? rowsAll().slice(1) : rowsAll();
-  const results = () => {
-    const seen = new Set(); const out = { add: [], dup: [], empty: 0 };
-    for (const r of dataRows()) {
-      const c = rowToClient(r, st.map);
-      if (!c.company && !c.contactName && !c.email) { out.empty++; continue; }
-      const key = (c.email || (c.company + '|' + c.contactName)).toLowerCase(); if (seen.has(key)) { out.empty++; continue; } seen.add(key);
-      const d = findDuplicate(c); if (d) out.dup.push([c, d]); else out.add.push(c);
-    }
-    return out;
-  };
   function step1(err = '') {
-    box.innerHTML = `<p class="sub">Bring in your address book from BlinkBid, Google Contacts, Outlook, Apple Contacts or any spreadsheet. Nothing is saved until you confirm.</p>
+    box.innerHTML = `<p class="sub">Bring in your address book from BlinkBid, Google Contacts, Outlook, Apple Contacts or any spreadsheet. Separate company and people lists work too: import one, then the other. People are linked to their company by name. Nothing is saved until you confirm.</p>
       <label class="btn pri" style="padding:10px 16px">Choose file…<input type="file" accept=".csv,.tsv,.txt,.xlsx,.xls,.vcf,.vcard,text/csv" hidden id="imp-file"></label>
       <p class="hint" style="margin-top:10px">Accepts <b>.csv</b>, <b>.xlsx</b> (Excel / Numbers) and <b>.vcf</b> (Apple Contacts / iCloud). Older <b>.xls</b> files: open them in Excel or Numbers and save as .xlsx or CSV first.</p>
       ${err ? `<div class="banner" style="background:#fbe3e0;border-color:#efb1a8">${esc(err)}</div>` : ''}`;
@@ -1671,34 +1804,51 @@ function importContactsModal() {
         else if (ext === 'vcf' || ext === 'vcard') st.sheets = [{ name: 'Contacts', rows: parseVCF(await f.text()) }];
         else st.sheets = [{ name: f.name, rows: parseCSV(await f.text()) }];
         if (!rowsAll().length) throw new Error('That file has no rows.');
-        st.map = guessMapping(headers()); step2();
+        st.map = guessMapping(headers());
+        const hasName = st.map.fullName != null || st.map.firstName != null || st.map.lastName != null;
+        st.mode = hasName ? 'auto' : 'companies'; step2();
       } catch (er) { step1(er.message || String(er)); }
     });
   }
   function step2() {
-    const H = headers(); const R = results(); const preview = R.add.slice(0, 6).concat(R.dup.slice(0, Math.max(0, 6 - R.add.length)).map(x => ({ ...x[0], dup: true })));
+    const H = headers(); const { planned, empty } = planImport(dataRows(), st.map, st.mode);
+    const nc = planned.filter(x => x.type === 'company' && x.status === 'new').length, np = planned.filter(x => x.type === 'person' && x.status === 'new').length;
+    const dups = planned.filter(x => x.status === 'dup').length;
+    const linked = planned.filter(x => x.type === 'person' && x.status === 'new' && x.coRef).length;
+    const preview = planned.slice(0, 8);
+    const coOf = x => x.type === 'person' ? (x.coName ? x.coName + (x.coRef?.existing ? '' : ' (new)') : 'Independent') : '';
     box.innerHTML = `<div class="row" style="margin-bottom:10px"><b>${esc(st.fileName)}</b><span class="sub">${dataRows().length} rows</span><span style="flex:1"></span>
         ${st.sheets.length > 1 ? `<select id="imp-sheet" style="width:auto">${st.sheets.map((s, i) => `<option value="${i}" ${i === st.sheet ? 'selected' : ''}>Sheet: ${esc(s.name)}</option>`).join('')}</select>` : ''}
         <label class="chk"><input type="checkbox" id="imp-head" ${st.header ? 'checked' : ''}> First row is column names</label><button class="btn sm" id="imp-back">Choose another file</button></div>
+      <div class="row" style="margin-bottom:12px"><span class="sub">Each row is a</span><div class="chips">
+        <button class="chipbtn ${st.mode === 'auto' ? 'on' : ''}" data-mode="auto">Person or company (automatic)</button>
+        <button class="chipbtn ${st.mode === 'companies' ? 'on' : ''}" data-mode="companies">Company</button>
+        <button class="chipbtn ${st.mode === 'people' ? 'on' : ''}" data-mode="people">Person</button></div></div>
       <div class="card" style="padding:12px 14px"><h3>Match columns</h3><div class="grid g3">${IMPORT_FIELDS.map(([f, l]) => `<label class="f"><span>${l}</span><select data-map="${f}"><option value="">—</option>${H.map((h, i) => `<option value="${i}" ${st.map[f] === i ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></label>`).join('')}</div>
-        <div class="hint" style="margin-top:8px">Columns were matched automatically. Fix anything that's off; the preview updates as you go.</div></div>
-      <div class="card tablecard"><table class="t"><thead><tr><th>Company</th><th>Contact</th><th>Email / phone</th><th>Address</th></tr></thead><tbody>${preview.map(c => `<tr style="${c.dup ? 'opacity:.55' : ''}"><td>${esc(c.company) || '<span class="sub">—</span>'}${c.dup ? '<div><span class="badge">Already a client</span></div>' : ''}</td><td>${esc(c.contactName) || '<span class="sub">—</span>'}</td><td>${esc(c.email)}<div class="sub">${esc(c.phone)}</div></td><td style="white-space:pre-line;font-size:12px">${esc(c.address)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">Nothing to import with this column matching.</td></tr>'}</tbody></table></div>
-      <div class="row" style="margin-top:4px"><span><b>${R.add.length}</b> new contact${R.add.length === 1 ? '' : 's'}</span>
-        ${R.dup.length ? `<span>· <b>${R.dup.length}</b> already in your clients</span><select id="imp-dup" style="width:auto">${opt('skip', 'Skip those', st.dupMode)}${opt('fill', 'Fill in their missing details', st.dupMode)}</select>` : ''}
-        ${R.empty ? `<span class="sub">· ${R.empty} blank or repeated row${R.empty === 1 ? '' : 's'} ignored</span>` : ''}</div>
-      <div class="acts"><button class="btn" data-a="cancel">Cancel</button><button class="btn pri" id="imp-go" ${R.add.length || (R.dup.length && st.dupMode === 'fill') ? '' : 'disabled'}>Import ${R.add.length} contact${R.add.length === 1 ? '' : 's'}${R.dup.length && st.dupMode === 'fill' ? ` + update ${R.dup.length}` : ''}</button></div>`;
+        <div class="hint" style="margin-top:8px">Columns were matched automatically. Fix anything that's off; the preview updates as you go. <b>Automatic</b>: rows with a person's name become people (linked to their company, which is created if it's new); rows with only a company become companies.</div></div>
+      <div class="card tablecard"><table class="t"><thead><tr><th>Type</th><th>Name</th><th>Company</th><th>Email / phone</th><th>Address</th></tr></thead><tbody>${preview.map(x => `<tr style="${x.status === 'dup' ? 'opacity:.55' : ''}"><td><span class="ktag ${x.type === 'person' ? 'p' : 'c'}">${x.type === 'person' ? 'Person' : 'Company'}</span>${x.status === 'dup' ? '<div><span class="badge">Already in contacts</span></div>' : ''}</td><td><b>${esc(x.type === 'person' ? x.data.contactName : x.data.company)}</b>${x.data.title ? `<div class="sub">${esc(x.data.title)}</div>` : ''}</td><td>${esc(coOf(x)) || '<span class="sub">—</span>'}</td><td>${esc(x.data.email)}<div class="sub">${esc(x.data.phone)}</div></td><td style="white-space:pre-line;font-size:12px">${esc(x.data.address)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Nothing to import with this column matching.</td></tr>'}</tbody></table></div>
+      <div class="row" style="margin-top:4px"><span><b>${nc}</b> new compan${nc === 1 ? 'y' : 'ies'} · <b>${np}</b> new ${np === 1 ? 'person' : 'people'}${linked ? ` (${linked} linked to a company)` : ''}</span>
+        ${dups ? `<span>· <b>${dups}</b> already in contacts</span><select id="imp-dup" style="width:auto">${opt('skip', 'Skip those', st.dupMode)}${opt('fill', 'Fill in their missing details', st.dupMode)}</select>` : ''}
+        ${empty ? `<span class="sub">· ${empty} blank or repeated row${empty === 1 ? '' : 's'} ignored</span>` : ''}</div>
+      <div class="acts"><button class="btn" data-a="cancel">Cancel</button><button class="btn pri" id="imp-go" ${nc + np || (dups && st.dupMode === 'fill') ? '' : 'disabled'}>Import ${nc + np} contact${nc + np === 1 ? '' : 's'}${dups && st.dupMode === 'fill' ? ` + update ${dups}` : ''}</button></div>`;
     $$('[data-map]', box).forEach(s => s.addEventListener('change', () => { const v = s.value; if (v === '') delete st.map[s.dataset.map]; else st.map[s.dataset.map] = +v; step2(); }));
+    $$('[data-mode]', box).forEach(b => b.addEventListener('click', () => { st.mode = b.dataset.mode; step2(); }));
     $('#imp-head', box).addEventListener('change', e => { st.header = e.target.checked; st.map = st.header ? guessMapping(headers()) : {}; step2(); });
     $('#imp-sheet', box)?.addEventListener('change', e => { st.sheet = +e.target.value; st.map = guessMapping(headers()); step2(); });
     $('#imp-dup', box)?.addEventListener('change', e => { st.dupMode = e.target.value; step2(); });
     $('#imp-back', box).addEventListener('click', () => step1());
     $('[data-a="cancel"]', box).addEventListener('click', () => bg.remove());
     $('#imp-go', box).addEventListener('click', () => {
-      const R2 = results(); let upd = 0;
-      R2.add.forEach(c => S.clients.push({ id: uid(), ...c, licenseeName: '', createdAt: nowISO(), source: 'import' }));
-      if (st.dupMode === 'fill') R2.dup.forEach(([c, d]) => { let ch = false; ['company', 'contactName', 'email', 'phone', 'address', 'notes'].forEach(k => { if (!d[k] && c[k]) { d[k] = c[k]; ch = true; } }); if (ch) upd++; });
+      const { planned: P } = planImport(dataRows(), st.map, st.mode); let nNew = 0, upd = 0;
+      P.filter(x => x.type === 'company' && x.status === 'new').forEach(x => { const c = { id: uid(), ...x.data, createdAt: nowISO(), source: 'import' }; x.ref.existing = c; S.clients.push(c); nNew++; });
+      P.filter(x => x.type === 'person').forEach(x => {
+        const coId = x.coRef?.existing?.id || '';
+        if (x.status === 'new') { S.clients.push({ id: uid(), ...x.data, companyId: coId, createdAt: nowISO(), source: 'import' }); nNew++; }
+        else if (st.dupMode === 'fill') { const d = x.dupOf; let ch = false; ['contactName', 'title', 'email', 'phone', 'address', 'notes'].forEach(k => { if (!d[k] && x.data[k]) { d[k] = x.data[k]; ch = true; } }); if (!d.companyId && coId) { d.companyId = coId; ch = true; } if (ch) upd++; }
+      });
+      if (st.dupMode === 'fill') P.filter(x => x.type === 'company' && x.status === 'dup').forEach(x => { const d = x.dupOf; let ch = false; ['email', 'phone', 'address', 'notes'].forEach(k => { if (!d[k] && x.data[k]) { d[k] = x.data[k]; ch = true; } }); if (ch) upd++; });
       touch(); bg.remove(); go('#/clients');
-      toast(`Imported ${R2.add.length} contact${R2.add.length === 1 ? '' : 's'}${upd ? `, updated ${upd}` : ''}`, 3500);
+      toast(`Imported ${nNew} contact${nNew === 1 ? '' : 's'}${upd ? `, updated ${upd}` : ''}`, 3500);
     });
   }
   step1();
